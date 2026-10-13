@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id               String         @id @default(cuid())
+  name             String
+  companyName      String?
+  primaryPhone     String?
+  mobilePhone      String?
+  normalizedPhones String         @default("") // comma-separated digits for matching
+  email            String?
+  billingAddress   String?
+  qboId            String?        @unique
+  qboBalance       Float?         @default(0.0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  calls            CallLog[]
+  invoices         InvoiceCache[]
+  notes            Note[]
+
+  @@index([email])
+}
+
+model CallLog {
+  id             String    @id @default(cuid())
+  callId         String?   @unique
+  fromNumber     String
+  normalizedFrom String
+  toExtension    String?
+  direction      String    @default("inbound") // inbound, outbound
+  status         String    @default("ringing") // ringing, answered, completed, missed
+  duration       Int       @default(0) // seconds
+  timestamp      DateTime  @default(now())
+  
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  notes          Note[]
+
+  @@index([normalizedFrom])
+  @@index([timestamp])
+}
+
+model Note {
+  id         String    @id @default(cuid())
+  content    String
+  author     String    @default("Agent")
+  createdAt  DateTime  @default(now())
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  callLogId  String?
+  callLog    CallLog?  @relation(fields: [callLogId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+}
+
+model InvoiceCache {
+  id           String    @id @default(cuid())
+  qboInvoiceId String    @unique
+  docNumber    String
+  totalAmount  Float
+  balance      Float
+  dueDate      String?
+  txnDate      String?
+  status       String    @default("Open") // Paid, Open, Overdue
+  
+  customerId   String
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  updatedAt    DateTime  @updatedAt
+
+  @@index([customerId])
+}
+
+model Integration {
+  id             String    @id @default(cuid())
+  provider       String    @unique // quickbooks, google
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  realmId        String?   // QBO Company/Realm ID
+  metadata       String?   // JSON object for additional flags
+  updatedAt      DateTime  @updatedAt
+}
