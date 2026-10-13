@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev -p 3050",
     "build": "prisma generate && next build",
     "start": "node .next/standalone/server.js",
     "prisma:generate": "prisma generate",

@@ -28,19 +28,22 @@ A self-hosted, lightweight CRM designed to run in Docker on your local network. 
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3050](http://localhost:3050) in your browser.
 
 ---
 
 ## Running in Docker
 
-Once [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) is installed and running on your machine:
+Once [Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker engine is installed on your server:
 
 ```bash
 docker compose up -d --build
 ```
 
-The application will start on port `3000` with database files persisted in the `./data` directory.
+The application will start on port `3050` by default (configurable via `HOST_PORT` in `.env`) with database files persisted in the `./data` directory.
+
+> [!TIP]
+> **Changing the Port**: You can change the port to any number (e.g. `8080`, `3001`, `5000`) simply by setting `HOST_PORT=8080` in your `.env` file before running `docker compose up -d`.
 
 ---
 
@@ -50,7 +53,7 @@ The application will start on port `3000` with database files persisted in the `
 2. Open your **UniFi OS Console** (UDM Pro, Cloud Gateway, etc.).
 3. Open the **Talk** application &rarr; Click **Settings** &rarr; **System** (or **Integrations**).
 4. Under **Webhooks / Third-Party Integration**, set:
-   - **URL**: `http://<YOUR-HOST-IP>:3000/api/webhooks/unifi-talk`
+   - **URL**: `http://<YOUR-HOST-IP>:3050/api/webhooks/unifi-talk`
    - **Method**: `POST`
    - **Secret Header**: `x-unifi-secret: talkcrm-secret-token` (matches your `.env`)
 5. Save the configuration. Inbound and outbound calls will now instantly trigger screen-pops in TalkCRM!
@@ -78,7 +81,7 @@ You can test the real-time call popup without a physical phone call:
 1. Register an Intuit Developer account at [developer.intuit.com](https://developer.intuit.com).
 2. Create an app (select **Accounting** scope).
 3. In App Settings &rarr; **Keys & OAuth**:
-   - Add Redirect URI: `http://localhost:3000/api/auth/quickbooks/callback`
+   - Add Redirect URI: `http://localhost:3050/api/auth/quickbooks/callback`
    - Copy your **Client ID** and **Client Secret** into your `.env` file:
      ```env
      QBO_CLIENT_ID="your_client_id"
@@ -96,7 +99,7 @@ TalkCRM includes built-in Google OAuth authentication to restrict access to your
 
 1. In your [Google Cloud Console](https://console.cloud.google.com), under **OAuth 2.0 Client IDs**, add the Authorized Redirect URI:
    ```text
-   http://<YOUR-SERVER-IP>:3000/api/auth/callback
+   http://<YOUR-SERVER-IP>:3050/api/auth/callback
    ```
 2. In your `.env` file, configure the security variables:
    ```env
@@ -123,7 +126,7 @@ TalkCRM includes built-in Google OAuth authentication to restrict access to your
 2. Create a project and enable the **Gmail API**.
 3. Under **OAuth consent screen**, configure your app and add the scope `https://www.googleapis.com/auth/gmail.readonly`.
 4. Under **Credentials**, create an **OAuth 2.0 Client ID (Web Application)**:
-   - Authorized redirect URI: `http://localhost:3000/api/auth/google/callback`
+   - Authorized redirect URI: `http://localhost:3050/api/auth/google/callback`
 5. Copy your credentials into `.env`:
    ```env
    GOOGLE_CLIENT_ID="your_client_id"
