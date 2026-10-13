@@ -1,0 +1,31 @@
+services:
+  talkcrm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: talkcrm:latest
+    container_name: talkcrm
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3050}:3000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/data/crm.db
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3050}
+      - ENABLE_AUTH=${ENABLE_AUTH:-true}
+      - AUTH_SECRET=${AUTH_SECRET:-talkcrm-secret-key-replace-in-production}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-}
+      - ALLOWED_USERS=${ALLOWED_USERS:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - UNIFI_TALK_WEBHOOK_SECRET=${UNIFI_TALK_WEBHOOK_SECRET:-talkcrm-secret-token}
+      - QBO_CLIENT_ID=${QBO_CLIENT_ID:-}
+      - QBO_CLIENT_SECRET=${QBO_CLIENT_SECRET:-}
+      - QBO_ENVIRONMENT=${QBO_ENVIRONMENT:-sandbox}
