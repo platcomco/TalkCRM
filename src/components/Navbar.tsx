@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import { PhoneCall, Users, Settings, Search, Radio, BellRing, CheckCircle2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { PhoneCall, Users, Settings, Search, Radio, BellRing, LogOut, User as UserIcon } from "lucide-react";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -11,6 +11,25 @@ export function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulatedMessage, setSimulatedMessage] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    // Only fetch auth if not on login page
+    if (pathname !== "/login") {
+      fetch("/api/auth/me")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.user) {
+            setCurrentUser(data.user);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [pathname]);
+
+  if (pathname === "/login") {
+    return null;
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,11 +140,38 @@ export function Navbar() {
             </button>
 
             {/* PBX Live Status Indicator */}
-            <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 rounded-full border border-slate-200 text-[11px] font-medium text-slate-700">
+            <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 rounded-full border border-slate-200 text-[11px] font-medium text-slate-700">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="hidden lg:inline">PBX Webhook:</span>
+              <span>PBX:</span>
               <span className="text-emerald-700 font-semibold">Active</span>
             </div>
+
+            {/* Employee Profile & Logout */}
+            {currentUser && (
+              <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
+                {currentUser.picture ? (
+                  <img
+                    src={currentUser.picture}
+                    alt={currentUser.name}
+                    className="w-7 h-7 rounded-full border border-slate-300"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">
+                    {currentUser.name?.charAt(0) || "U"}
+                  </div>
+                )}
+                <span className="text-xs font-semibold text-slate-700 hidden xl:inline">
+                  {currentUser.name}
+                </span>
+                <a
+                  href="/api/auth/logout"
+                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                  title="Sign out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ A self-hosted, lightweight CRM designed to run in Docker on your local network. 
 ## Features
 
 - **Live UniFi Talk Screen-Pop**: Receives incoming call webhooks on your local LAN and matches caller phone numbers in real-time (<50ms).
+- **Google Workspace Employee Login**: Secure sign-in restricted to your company domain (e.g. `@platcomco.com`) or specific employee emails.
 - **QuickBooks Online (QBO) Sync**: Pulls customer profiles, phone numbers, open invoice balances, and overdue notices.
 - **Gmail Thread Lookup**: Queries customer email threads on-demand via the Google Workspace API.
 - **In-Call Note Taking**: Log notes directly inside the floating call popup without interrupting your workflow.
@@ -89,7 +90,34 @@ You can test the real-time call popup without a physical phone call:
 
 ---
 
-## Connecting Google Workspace (Gmail)
+## Google Workspace Employee Login (Security)
+
+TalkCRM includes built-in Google OAuth authentication to restrict access to your team:
+
+1. In your [Google Cloud Console](https://console.cloud.google.com), under **OAuth 2.0 Client IDs**, add the Authorized Redirect URI:
+   ```text
+   http://<YOUR-SERVER-IP>:3000/api/auth/callback
+   ```
+2. In your `.env` file, configure the security variables:
+   ```env
+   # Enable or disable auth (set to "false" to bypass during local tests)
+   ENABLE_AUTH="true"
+
+   # Random 32+ character string to securely sign employee session cookies
+   AUTH_SECRET="your_random_secret_string"
+
+   # Only allow employees with your company Google Workspace domain
+   ALLOWED_EMAIL_DOMAINS="platcomco.com"
+
+   # Or specify allowed employee emails:
+   # ALLOWED_USERS="alice@company.com,bob@company.com"
+   ```
+3. When employees visit the CRM, they are presented with a **"Sign in with Google Workspace"** screen. Accounts outside your allowed domain are automatically rejected.
+4. **PBX Webhook Safety**: Machine-to-machine webhooks from your UniFi Talk PBX (`/api/webhooks/unifi-talk`) bypass browser employee logins and continue using token authentication.
+
+---
+
+## Connecting Google Workspace (Gmail Customer Search)
 
 1. Open the [Google Cloud Console](https://console.cloud.google.com).
 2. Create a project and enable the **Gmail API**.
