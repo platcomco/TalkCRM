@@ -1,5 +1,7 @@
 # Multi-stage Dockerfile for TalkCRM
 FROM node:20-alpine AS base
+# Prisma needs the openssl binary to pick the right engine (otherwise it falls back to 1.1.x and fails to load)
+RUN apk add --no-cache openssl
 
 # Step 1: Install dependencies
 FROM base AS deps

@@ -6,3 +6,7 @@ dev.db
 dev.db-journal
 npm-debug.log
 .DS_Store
+.env
+.env.*
+!.env.example
+desktop.ini
