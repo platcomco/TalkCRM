@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getQboConnection, getQboAuthUrl } from "@/lib/quickbooks";
 import { getGoogleConnection, getGoogleAuthUrl } from "@/lib/gmail";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const qbo = await getQboConnection();
   const google = await getGoogleConnection();
