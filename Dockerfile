@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for TalkCRM
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 # Prisma needs the openssl binary to pick the right engine (otherwise it falls back to 1.1.x and fails to load)
 RUN apk add --no-cache openssl
 
@@ -18,8 +18,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV DATABASE_URL "file:/app/data/crm.db"
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL="file:/app/data/crm.db"
 
 RUN npx prisma generate
 RUN npm run build
@@ -28,11 +28,11 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV DATABASE_URL "file:/app/data/crm.db"
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL="file:/app/data/crm.db"
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

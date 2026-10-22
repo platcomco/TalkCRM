@@ -4,11 +4,12 @@ import { fetchCustomerEmailThreads } from "@/lib/gmail";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const customer = await db.customer.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         calls: {
           orderBy: { timestamp: "desc" },
@@ -46,12 +47,13 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await req.json();
     const customer = await db.customer.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name: body.name,
         companyName: body.companyName,
