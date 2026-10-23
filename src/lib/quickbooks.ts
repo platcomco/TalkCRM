@@ -3,6 +3,14 @@ import { normalizePhoneNumber, extractDigits } from "./phone-utils";
 
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth/v1/tokens/bearer";
+const QBO_MINOR_VERSION = "75";
+const QBO_PAGE_SIZE = 1000; // QuickBooks query maximum
+
+export const QBO_STATE_COOKIE = "talkcrm_qbo_state";
+
+function getRedirectUri(): string {
+  return `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/quickbooks/callback`;
+}
 
 export async function getQboConnection() {
   return await db.integration.findUnique({
@@ -10,31 +18,32 @@ export async function getQboConnection() {
   });
 }
 
+/**
+ * URL the Settings page links to. It goes through our own connect route, which sets a
+ * random OAuth state cookie before redirecting to Intuit.
+ */
 export function getQboAuthUrl(): string {
-  const clientId = process.env.QBO_CLIENT_ID;
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/quickbooks/callback`;
-  const scope = "com.intuit.quickbooks.accounting";
-  const state = "talkcrm_qbo_state";
-
-  if (!clientId) {
+  if (!process.env.QBO_CLIENT_ID) {
     return "";
   }
+  return "/api/auth/quickbooks/connect";
+}
 
+export function buildQboAuthorizeUrl(state: string): string {
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: process.env.QBO_CLIENT_ID || "",
     response_type: "code",
-    scope,
-    redirect_uri: redirectUri,
+    scope: "com.intuit.quickbooks.accounting",
+    redirect_uri: getRedirectUri(),
     state,
   });
 
   return `${QBO_AUTH_URL}?${params.toString()}`;
 }
 
-export async function exchangeQboToken(code: string, realmId: string) {
+async function requestQboToken(body: Record<string, string>) {
   const clientId = process.env.QBO_CLIENT_ID;
   const clientSecret = process.env.QBO_CLIENT_SECRET;
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/quickbooks/callback`;
 
   if (!clientId || !clientSecret) {
     throw new Error("Missing QBO_CLIENT_ID or QBO_CLIENT_SECRET in environment.");
@@ -49,19 +58,23 @@ export async function exchangeQboToken(code: string, realmId: string) {
       Authorization: `Basic ${basicAuth}`,
       Accept: "application/json",
     },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri,
-    }).toString(),
+    body: new URLSearchParams(body).toString(),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to exchange QBO code: ${errorText}`);
+    throw new Error(`QuickBooks token request failed: ${errorText}`);
   }
 
-  const data = await response.json();
+  return await response.json();
+}
+
+export async function exchangeQboToken(code: string, realmId: string) {
+  const data = await requestQboToken({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: getRedirectUri(),
+  });
   const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000);
 
   return await db.integration.upsert({
@@ -84,31 +97,85 @@ export async function exchangeQboToken(code: string, realmId: string) {
   });
 }
 
-export async function syncQboCustomers() {
+/**
+ * Returns a connection with a usable access token. QuickBooks access tokens last 1 hour;
+ * refresh tokens last ~100 days and rotate, so the new refresh token must be saved each time.
+ */
+async function getValidQboConnection() {
   const connection = await getQboConnection();
   if (!connection || !connection.accessToken || !connection.realmId) {
     throw new Error("QuickBooks is not connected.");
   }
+
+  const expiresSoon =
+    !connection.tokenExpiresAt || connection.tokenExpiresAt.getTime() < Date.now() + 5 * 60 * 1000;
+  if (!expiresSoon) {
+    return connection;
+  }
+
+  if (!connection.refreshToken) {
+    throw new Error("QuickBooks session expired. Please reconnect QuickBooks in Settings.");
+  }
+
+  let data: any;
+  try {
+    data = await requestQboToken({
+      grant_type: "refresh_token",
+      refresh_token: connection.refreshToken,
+    });
+  } catch (err: any) {
+    throw new Error(`QuickBooks session expired. Please reconnect QuickBooks in Settings. (${err.message})`);
+  }
+
+  return await db.integration.update({
+    where: { provider: "quickbooks" },
+    data: {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || connection.refreshToken,
+      tokenExpiresAt: new Date(Date.now() + (data.expires_in || 3600) * 1000),
+    },
+  });
+}
+
+/**
+ * Runs a QuickBooks query and follows pagination until every row is returned.
+ */
+async function qboQueryAll(entity: string, where: string): Promise<any[]> {
+  const connection = await getValidQboConnection();
 
   const baseUrl =
     process.env.QBO_ENVIRONMENT === "production"
       ? `https://quickbooks.api.intuit.com/v3/company/${connection.realmId}`
       : `https://sandbox-quickbooks.api.intuit.com/v3/company/${connection.realmId}`;
 
-  const query = encodeURIComponent("select * from Customer where Active = true maxresults 200");
-  const response = await fetch(`${baseUrl}/query?query=${query}`, {
-    headers: {
-      Authorization: `Bearer ${connection.accessToken}`,
-      Accept: "application/json",
-    },
-  });
+  const rows: any[] = [];
+  for (let start = 1; ; start += QBO_PAGE_SIZE) {
+    const query = encodeURIComponent(
+      `select * from ${entity} where ${where} startposition ${start} maxresults ${QBO_PAGE_SIZE}`
+    );
+    const response = await fetch(`${baseUrl}/query?query=${query}&minorversion=${QBO_MINOR_VERSION}`, {
+      headers: {
+        Authorization: `Bearer ${connection.accessToken}`,
+        Accept: "application/json",
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(`QuickBooks API error: ${response.statusText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`QuickBooks API error (${response.status}): ${errorText.slice(0, 300)}`);
+    }
+
+    const data = await response.json();
+    const page = data?.QueryResponse?.[entity] || [];
+    rows.push(...page);
+    if (page.length < QBO_PAGE_SIZE) {
+      return rows;
+    }
   }
+}
 
-  const data = await response.json();
-  const customers = data?.QueryResponse?.Customer || [];
+export async function syncQboCustomers() {
+  const customers = await qboQueryAll("Customer", "Active = true");
 
   let syncedCount = 0;
   for (const c of customers) {
@@ -150,5 +217,53 @@ export async function syncQboCustomers() {
     syncedCount++;
   }
 
-  return { syncedCount };
+  const invoiceCount = await syncQboOpenInvoices();
+
+  return { syncedCount, invoiceCount };
+}
+
+/**
+ * Caches every unpaid invoice so screen-pops and the dashboard can show open balances.
+ * Invoices that are no longer unpaid are removed from the cache.
+ */
+async function syncQboOpenInvoices(): Promise<number> {
+  const invoices = await qboQueryAll("Invoice", "Balance > '0'");
+
+  const customers = await db.customer.findMany({
+    where: { qboId: { not: null } },
+    select: { id: true, qboId: true },
+  });
+  const customerIdByQboId = new Map(customers.map((c) => [c.qboId as string, c.id]));
+  const today = new Date().toISOString().slice(0, 10);
+
+  const keptIds: string[] = [];
+  for (const inv of invoices) {
+    const customerId = customerIdByQboId.get(String(inv.CustomerRef?.value));
+    if (!customerId) continue; // invoice for an inactive customer
+
+    const qboInvoiceId = `qbo-${inv.Id}`;
+    const dueDate = inv.DueDate || null;
+    const data = {
+      docNumber: inv.DocNumber || String(inv.Id),
+      totalAmount: parseFloat(inv.TotalAmt || "0"),
+      balance: parseFloat(inv.Balance || "0"),
+      dueDate,
+      txnDate: inv.TxnDate || null,
+      status: dueDate && dueDate < today ? "Overdue" : "Open",
+      customerId,
+    };
+
+    await db.invoiceCache.upsert({
+      where: { qboInvoiceId },
+      update: data,
+      create: { qboInvoiceId, ...data },
+    });
+    keptIds.push(qboInvoiceId);
+  }
+
+  await db.invoiceCache.deleteMany({
+    where: { qboInvoiceId: { startsWith: "qbo-", notIn: keptIds } },
+  });
+
+  return keptIds.length;
 }

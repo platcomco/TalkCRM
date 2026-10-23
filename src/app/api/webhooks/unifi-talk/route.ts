@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // UniFi Talk payload (confirmed from live calls):
-    // { event: "call_started" | "call_answered" | "call_completed" | "call_cancelled", call_id,
+    // { event: "call_started" | "call_answered" | "call_completed" | "call_cancelled" | "call_failed", call_id,
     //   direction: "in" | "out", caller_number, dialed_number, caller_name?, timestamp: ms }
     // Inbound:  caller_number = outside caller (+1817...), dialed_number = our DID
     // Outbound: caller_number = our extension (e.g. "1001"), dialed_number = outside number
@@ -41,7 +41,12 @@ export async function POST(req: NextRequest) {
     } else if (rawEvent.includes("answer")) {
       status = "answered";
       answeredAt = eventTime;
-    } else if (rawEvent.includes("miss") || rawEvent.includes("abandon") || rawEvent.includes("cancel")) {
+    } else if (
+      rawEvent.includes("miss") ||
+      rawEvent.includes("abandon") ||
+      rawEvent.includes("cancel") ||
+      rawEvent.includes("fail")
+    ) {
       status = "missed";
     } else if (rawEvent.includes("complete") || rawEvent.includes("end") || rawEvent.includes("hangup")) {
       // A call that ends without ever being answered is a missed call

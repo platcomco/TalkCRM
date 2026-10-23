@@ -58,7 +58,7 @@ function SettingsContent() {
       const res = await fetch("/api/integrations/quickbooks/sync", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        setActionMessage(`QuickBooks sync complete! Synced ${data.syncedCount || 0} customers.`);
+        setActionMessage(`QuickBooks sync complete! Synced ${data.syncedCount || 0} customers and ${data.invoiceCount || 0} open invoices.`);
       } else {
         setActionMessage(`Sync notice: ${data.error}`);
       }
