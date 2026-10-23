@@ -88,7 +88,7 @@ export default function CustomerDetailPage() {
   };
 
   if (loading) {
-    return <div className="p-12 text-center text-slate-500 text-sm">Loading customer dossier...</div>;
+    return <div className="p-12 text-center text-slate-500 text-sm">Loading customer...</div>;
   }
 
   if (!customer) {
@@ -118,7 +118,7 @@ export default function CustomerDetailPage() {
         </Link>
       </div>
 
-      {/* Top Customer Header Dossier */}
+      {/* Customer header */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
           <div className="space-y-1">

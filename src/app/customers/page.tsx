@@ -286,7 +286,7 @@ function CustomersContent() {
                           href={`/customers/${c.id}`}
                           className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
                         >
-                          <span>Open Dossier</span>
+                          <span>View</span>
                           <ExternalLink className="w-3 h-3" />
                         </Link>
                       </td>

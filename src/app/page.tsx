@@ -200,7 +200,7 @@ export default async function DashboardPage() {
                         <Link
                           href={`/customers/${call.customer.id}`}
                           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                          title="View customer dossier"
+                          title="View customer"
                         >
                           <ExternalLink className="w-4 h-4" />
                         </Link>

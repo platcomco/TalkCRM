@@ -150,7 +150,7 @@ export default function CallsPage() {
                           href={`/customers/${c.customer.id}`}
                           className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition"
                         >
-                          <span>Dossier</span>
+                          <span>View</span>
                           <ExternalLink className="w-3 h-3" />
                         </Link>
                       ) : (
