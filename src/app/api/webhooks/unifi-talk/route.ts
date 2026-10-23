@@ -5,17 +5,11 @@ import { callEvents } from "@/lib/event-emitter";
 
 export async function POST(req: NextRequest) {
   try {
-    // Optional secret verification
+    // Secret verification: UniFi Talk sends the configured secret in the x-unifi-secret header.
+    // When a secret is configured, requests without it are rejected too.
     const secret = process.env.UNIFI_TALK_WEBHOOK_SECRET;
-    if (secret) {
-      const headerSecret = req.headers.get("x-unifi-secret") || req.headers.get("x-webhook-secret");
-      const authHeader = req.headers.get("authorization");
-      const urlSecret = req.nextUrl.searchParams.get("secret");
-
-      const passedSecret = headerSecret || urlSecret || (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null);
-      if (passedSecret && passedSecret !== secret) {
-        return NextResponse.json({ error: "Unauthorized webhook" }, { status: 401 });
-      }
+    if (secret && req.headers.get("x-unifi-secret") !== secret) {
+      return NextResponse.json({ error: "Unauthorized webhook" }, { status: 401 });
     }
 
     const body = await req.json();
@@ -31,48 +25,58 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    // Extract caller number from various possible PBX payload formats
-    const rawFrom =
-      body.caller ||
-      body.from ||
-      body.caller_id_number ||
-      body.caller_number ||
-      body.source ||
-      body.calling_number ||
-      "";
+    // UniFi Talk payload (confirmed from live calls):
+    // { event: "call_started" | "call_answered" | "call_completed", call_id, direction: "in" | "out",
+    //   caller_number: "+1817...", dialed_number: "+1817...", caller_name? (on completed), timestamp: ms }
+    const callId = String(body.call_id || `call_${Date.now()}`);
+    const rawEvent = String(body.event || "").toLowerCase();
+    const eventTime = typeof body.timestamp === "number" ? new Date(body.timestamp) : new Date();
+    const direction = body.direction === "out" ? "outbound" : "inbound";
 
-    const toExtension = String(
-      body.callee ||
-      body.to ||
-      body.extension ||
-      body.destination ||
-      body.dialed_number ||
-      ""
-    );
+    const rawFrom = String(body.caller_number || "");
+    const toExtension = String(body.dialed_number || "");
+    // The customer is the far end: the caller on inbound calls, the dialed number on outbound calls
+    const remoteNumber = direction === "outbound" ? toExtension : rawFrom;
 
-    const callId = String(body.call_id || body.id || body.uuid || `call_${Date.now()}`);
-    const rawEvent = (body.event || body.type || body.status || "ringing").toLowerCase();
+    const existing = await db.callLog.findUnique({ where: { callId } });
 
-    // Normalize call status
-    let status: "ringing" | "answered" | "completed" | "missed" = "ringing";
-    if (rawEvent.includes("answer")) status = "answered";
-    else if (rawEvent.includes("end") || rawEvent.includes("hangup") || rawEvent.includes("complete")) status = "completed";
-    else if (rawEvent.includes("miss")) status = "missed";
+    let status: "ringing" | "answered" | "completed" | "missed";
+    let answeredAt: Date | undefined;
+    let duration = 0;
+    if (rawEvent.includes("start") || rawEvent.includes("ring")) {
+      status = "ringing";
+    } else if (rawEvent.includes("answer")) {
+      status = "answered";
+      answeredAt = eventTime;
+    } else if (rawEvent.includes("miss") || rawEvent.includes("abandon") || rawEvent.includes("cancel")) {
+      status = "missed";
+    } else if (rawEvent.includes("complete") || rawEvent.includes("end") || rawEvent.includes("hangup")) {
+      // A call that ends without ever being answered is a missed call
+      if (existing?.answeredAt) {
+        status = "completed";
+        duration = Math.max(0, Math.round((eventTime.getTime() - existing.answeredAt.getTime()) / 1000));
+      } else {
+        status = "missed";
+      }
+    } else {
+      // Unknown event type: keep it in the log but don't change the call's status
+      return NextResponse.json({ success: true, ignored: rawEvent || "missing event" });
+    }
 
-    const duration = parseInt(body.duration || body.billsec || "0", 10);
-
-    const normalizedFrom = normalizePhoneNumber(rawFrom);
-    const digits = extractDigits(rawFrom);
+    const normalizedFrom = normalizePhoneNumber(remoteNumber);
+    const digits = extractDigits(remoteNumber);
+    // Match on the 10-digit national number, which every stored phone format contains
+    const matchDigits = digits.length >= 10 ? digits.slice(-10) : digits;
 
     // Lookup customer in database by normalized phone or digits
     let customer: any = null;
-    if (digits.length >= 7) {
+    if (matchDigits.length >= 7) {
       const candidates = await db.customer.findMany({
         where: {
           OR: [
-            { normalizedPhones: { contains: digits } },
-            { primaryPhone: { contains: digits } },
-            { mobilePhone: { contains: digits } },
+            { normalizedPhones: { contains: matchDigits } },
+            { primaryPhone: { contains: matchDigits } },
+            { mobilePhone: { contains: matchDigits } },
           ],
         },
         include: {
@@ -94,6 +98,7 @@ export async function POST(req: NextRequest) {
       update: {
         status,
         duration: duration || undefined,
+        answeredAt,
         customerId: customer ? customer.id : undefined,
       },
       create: {
@@ -101,9 +106,11 @@ export async function POST(req: NextRequest) {
         fromNumber: rawFrom || "Unknown",
         normalizedFrom: normalizedFrom || digits || "unknown",
         toExtension: toExtension || null,
-        direction: body.direction || "inbound",
+        direction,
         status,
         duration,
+        timestamp: eventTime,
+        answeredAt,
         customerId: customer ? customer.id : null,
       },
     });
@@ -112,7 +119,7 @@ export async function POST(req: NextRequest) {
       id: callLog.id,
       callId,
       fromNumber: rawFrom || "Unknown",
-      formattedFrom: formatPhoneDisplay(rawFrom || digits),
+      formattedFrom: formatPhoneDisplay(remoteNumber || digits),
       toExtension,
       direction: callLog.direction,
       status,
@@ -130,7 +137,8 @@ export async function POST(req: NextRequest) {
     };
 
     // Broadcast live event to open browser tabs
-    if (status === "ringing") {
+    // Only inbound calls pop up; an outbound call's "ringing" is our own staff dialing out
+    if (status === "ringing" && direction === "inbound") {
       callEvents.emitCall("incoming_call", callPayload);
     } else if (status === "completed" || status === "missed") {
       callEvents.emitCall("call_ended", callPayload);

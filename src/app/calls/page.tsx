@@ -133,6 +133,8 @@ export default function CallsPage() {
                           ? "bg-slate-100 text-slate-700"
                           : c.status === "ringing"
                           ? "bg-blue-100 text-blue-700 animate-pulse"
+                          : c.status === "missed"
+                          ? "bg-red-100 text-red-700"
                           : "bg-emerald-100 text-emerald-700"
                       }`}>
                         {c.status}

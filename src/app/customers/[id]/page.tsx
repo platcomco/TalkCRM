@@ -377,7 +377,7 @@ export default function CustomerDetailPage() {
                         <td className="py-3 px-3">{c.duration > 0 ? `${c.duration}s` : "0s"}</td>
                         <td className="py-3 px-3">
                           <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-semibold ${
-                            c.status === "completed" ? "bg-slate-100 text-slate-700" : "bg-emerald-100 text-emerald-800"
+                            c.status === "completed" ? "bg-slate-100 text-slate-700" : c.status === "missed" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"
                           }`}>
                             {c.status}
                           </span>

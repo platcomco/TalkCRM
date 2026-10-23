@@ -220,14 +220,16 @@ You can verify the entire telephony pipeline without needing a live telephone ca
    ```bash
    node scripts/simulate-call.js 5559990011 ringing
    ```
-3. **Simulate Call Answered**:
+3. **Simulate a Full Answered Call (rings, answered, 120 seconds of talk time)**:
    ```bash
-   node scripts/simulate-call.js 5552345678 answered
+   node scripts/simulate-call.js 5552345678 answered 120
    ```
-4. **Simulate Call Completed with 120-Second Duration**:
+4. **Simulate a Missed Call (rings, caller hangs up)**:
    ```bash
-   node scripts/simulate-call.js 5552345678 completed 120
+   node scripts/simulate-call.js 5552345678 missed
    ```
+
+The script sends the same events UniFi Talk sends (`call_started`, `call_answered`, `call_completed`) to `http://localhost:3050` by default. Set `TALKCRM_URL` to target another server and `UNIFI_TALK_WEBHOOK_SECRET` to match the server's secret.
 
 ---
 

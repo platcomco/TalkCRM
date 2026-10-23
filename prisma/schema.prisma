@@ -38,7 +38,8 @@ model CallLog {
   status         String    @default("ringing") // ringing, answered, completed, missed
   duration       Int       @default(0) // seconds
   timestamp      DateTime  @default(now())
-  
+  answeredAt     DateTime? // UniFi Talk sends no duration; talk time = completed - answeredAt
+
   customerId     String?
   customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   notes          Note[]
