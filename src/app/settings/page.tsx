@@ -231,7 +231,7 @@ function SettingsContent() {
             <a href="https://developer.intuit.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">
               developer.intuit.com
             </a>
-            , set Redirect URI to <code>http://localhost:3000/api/auth/quickbooks/callback</code>, and add your <code>QBO_CLIENT_ID</code> and <code>QBO_CLIENT_SECRET</code> to your <code>.env</code> file.
+            , set Redirect URI to <code>{status?.quickbooks?.redirectUri || "(loading...)"}</code> exactly, and add your <code>QBO_CLIENT_ID</code> and <code>QBO_CLIENT_SECRET</code> to your <code>.env</code> file.
           </p>
         </div>
       </div>
@@ -282,7 +282,7 @@ function SettingsContent() {
             <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">
               Google Cloud Console
             </a>
-            , set Redirect URI to <code>http://localhost:3000/api/auth/google/callback</code>, and add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to your <code>.env</code> file.
+            , set Redirect URI to <code>{status?.google?.redirectUri || "(loading...)"}</code> exactly, and add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to your <code>.env</code> file.
           </p>
         </div>
       </div>

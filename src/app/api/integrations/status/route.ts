@@ -17,11 +17,13 @@ export async function GET() {
       realmId: qbo?.realmId || null,
       authUrl: getQboAuthUrl(),
       configuredInEnv: !!process.env.QBO_CLIENT_ID,
+      redirectUri: `${appUrl}/api/auth/quickbooks/callback`,
     },
     google: {
       connected: !!google?.accessToken,
       authUrl: getGoogleAuthUrl(),
       configuredInEnv: !!process.env.GOOGLE_CLIENT_ID,
+      redirectUri: `${appUrl}/api/auth/google/callback`,
     },
     unifiTalk: {
       webhookUrl,
