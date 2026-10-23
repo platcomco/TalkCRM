@@ -52,7 +52,9 @@ export async function POST(req: NextRequest) {
         status = "missed";
       }
     } else {
-      // Unknown event type: keep it in the log but don't change the call's status
+      // Unknown event type (e.g. SMS or other Talk events): log its name and field names only
+      // (no numbers or message text) so new event types can be supported, and leave calls untouched
+      console.log("[unifi-talk webhook] ignored event", JSON.stringify({ event: rawEvent, fields: Object.keys(body) }));
       return NextResponse.json({ success: true, ignored: rawEvent || "missing event" });
     }
 
