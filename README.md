@@ -7,7 +7,7 @@ A self-hosted, lightweight CRM designed to run in Docker on your local network. 
 ## Features
 
 - **Live UniFi Talk Screen-Pop**: Receives incoming call webhooks on your local LAN and matches caller phone numbers in real-time (<50ms).
-- **Google Workspace Employee Login**: Secure sign-in restricted to your company domain (e.g. `@platcomco.com`) or specific employee emails.
+- **Google Workspace Employee Login**: Secure sign-in restricted to your company domain (e.g. `@platinumcom.co`) or specific employee emails.
 - **QuickBooks Online (QBO) Sync**: Pulls customer profiles, phone numbers, open invoice balances, and overdue notices.
 - **Gmail Thread Lookup**: Queries customer email threads on-demand via the Google Workspace API.
 - **In-Call Note Taking**: Log notes directly inside the floating call popup without interrupting your workflow.
@@ -110,7 +110,7 @@ TalkCRM includes built-in Google OAuth authentication to restrict access to your
    AUTH_SECRET="your_random_secret_string"
 
    # Only allow employees with your company Google Workspace domain
-   ALLOWED_EMAIL_DOMAINS="platcomco.com"
+   ALLOWED_EMAIL_DOMAINS="platinumcom.co"
 
    # Or specify allowed employee emails:
    # ALLOWED_USERS="alice@company.com,bob@company.com"

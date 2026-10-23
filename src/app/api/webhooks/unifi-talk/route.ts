@@ -6,8 +6,12 @@ import { callEvents } from "@/lib/event-emitter";
 export async function POST(req: NextRequest) {
   try {
     // Secret verification: UniFi Talk sends the configured secret in the x-unifi-secret header.
-    // When a secret is configured, requests without it are rejected too.
+    // This route is public, so with no secret configured it refuses everything (fail closed);
+    // only local testing with ENABLE_AUTH=false accepts unsigned calls.
     const secret = process.env.UNIFI_TALK_WEBHOOK_SECRET;
+    if (!secret && process.env.ENABLE_AUTH !== "false") {
+      return NextResponse.json({ error: "Webhook secret not configured" }, { status: 503 });
+    }
     if (secret && req.headers.get("x-unifi-secret") !== secret) {
       return NextResponse.json({ error: "Unauthorized webhook" }, { status: 401 });
     }

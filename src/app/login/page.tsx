@@ -21,6 +21,10 @@ function LoginContent() {
         return "GOOGLE_CLIENT_ID is not configured in the server environment.";
       case "access_denied":
         return "Google sign-in was canceled.";
+      case "invalid_state":
+        return "The sign-in couldn't be verified (it may have expired). Please try again.";
+      case "auth_not_configured":
+        return "Login isn't set up on the server yet: AUTH_SECRET is missing or shorter than 32 characters.";
       default:
         return error ? `Login error: ${decodeURIComponent(error)}` : null;
     }

@@ -29,5 +29,6 @@ export async function GET() {
       webhookUrl,
       hasSecret: !!process.env.UNIFI_TALK_WEBHOOK_SECRET,
     },
+    demoDataEnabled: process.env.ENABLE_DEMO_DATA === "true",
   });
 }

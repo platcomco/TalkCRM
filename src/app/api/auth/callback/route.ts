@@ -1,14 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, isEmailAllowed, SESSION_COOKIE_NAME, SessionUser } from "@/lib/auth";
+import {
+  createSessionToken,
+  isAuthConfigured,
+  isEmailAllowed,
+  LOGIN_STATE_COOKIE,
+  SESSION_COOKIE_NAME,
+  SessionUser,
+} from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const error = req.nextUrl.searchParams.get("error");
+  const state = req.nextUrl.searchParams.get("state");
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const redirectUri = `${appUrl}/api/auth/callback`;
 
   if (error || !code) {
     return NextResponse.redirect(`${appUrl}/login?error=${encodeURIComponent(error || "access_denied")}`);
+  }
+
+  const expectedState = req.cookies.get(LOGIN_STATE_COOKIE)?.value;
+  if (!state || !expectedState || state !== expectedState) {
+    return NextResponse.redirect(`${appUrl}/login?error=invalid_state`);
+  }
+
+  if (!isAuthConfigured()) {
+    return NextResponse.redirect(`${appUrl}/login?error=auth_not_configured`);
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -50,10 +67,10 @@ export async function GET(req: NextRequest) {
     }
 
     const googleUser = await userRes.json();
-    const { sub, email, name, picture, hd } = googleUser;
+    const { sub, email, name, picture, hd, email_verified } = googleUser;
 
-    // 3. Verify domain or email whitelist
-    if (!isEmailAllowed(email, hd)) {
+    // 3. Verify domain or email allow-list
+    if (!isEmailAllowed(email, hd, email_verified === true || email_verified === "true")) {
       return NextResponse.redirect(
         `${appUrl}/login?error=unauthorized_domain&email=${encodeURIComponent(email)}`
       );
@@ -75,11 +92,12 @@ export async function GET(req: NextRequest) {
       name: SESSION_COOKIE_NAME,
       value: token,
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production" && !appUrl.startsWith("http://localhost"),
+      secure: appUrl.startsWith("https://"),
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
+    response.cookies.delete({ name: LOGIN_STATE_COOKIE, path: "/api/auth" });
 
     return response;
   } catch (err: any) {

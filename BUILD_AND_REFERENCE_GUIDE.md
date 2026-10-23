@@ -115,12 +115,12 @@ NEXT_PUBLIC_APP_URL="http://10.30.46.130:3050" # Set to your server's LAN IP or 
 
 # Security & Employee Login
 ENABLE_AUTH="true"                     # Set to "false" to bypass login during offline tests
-AUTH_SECRET="your_32_character_secret" # Secret used to sign session cookies
-ALLOWED_EMAIL_DOMAINS="platcomco.com"  # Restricts logins to your Google Workspace domain
+AUTH_SECRET=""                           # REQUIRED: 32+ random characters (no default; login is refused without it)
+ALLOWED_EMAIL_DOMAINS="platinumcom.co"  # Restricts logins to your Google Workspace domain
 ALLOWED_USERS=""                       # Optional: comma-separated list of specific allowed emails
 
 # PBX Webhook Security
-UNIFI_TALK_WEBHOOK_SECRET="talkcrm-secret-token"
+UNIFI_TALK_WEBHOOK_SECRET=""             # REQUIRED: same value as the x-unifi-secret header in UniFi Talk
 
 # QuickBooks Online
 QBO_CLIENT_ID="your_intuit_client_id"
@@ -240,5 +240,5 @@ The script sends the same events UniFi Talk sends (`call_started`, `call_answere
 | **Connection Refused on LAN IP** | Server is only bound to `127.0.0.1` | Ensure `HOSTNAME="0.0.0.0"` is set in `.env` and `dev` runs with `-H 0.0.0.0`. |
 | **Port Conflict** | Port 3000 is occupied by another app | Change `HOST_PORT=3050` (or `8080`) in `.env`. |
 | **EPERM during `prisma generate`** | Running server has a Windows file lock on the query engine DLL | Stop the running node process before running `prisma generate`. |
-| **Google Sign-in Blocked** | User's email domain doesn't match `ALLOWED_EMAIL_DOMAINS` | Verify the employee is logging in with their `@platcomco.com` company account. |
+| **Google Sign-in Blocked** | User's email domain doesn't match `ALLOWED_EMAIL_DOMAINS` | Verify the employee is logging in with their `@platinumcom.co` company account. |
 | **Database Backup** | Need to backup CRM records | Copy the `./data/crm.db` file (or `dev.db` locally). |

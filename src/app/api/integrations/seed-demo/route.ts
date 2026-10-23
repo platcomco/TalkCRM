@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
 export async function POST() {
+  // Demo customers must never be mixed into a real QuickBooks-synced database
+  if (process.env.ENABLE_DEMO_DATA !== "true") {
+    return NextResponse.json({ error: "Demo data is disabled (set ENABLE_DEMO_DATA=true to enable)." }, { status: 403 });
+  }
+
   try {
     // Check if customer exists
     const count = await db.customer.count();

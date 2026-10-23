@@ -9,23 +9,32 @@ export async function getGoogleConnection() {
   });
 }
 
+export const GOOGLE_STATE_COOKIE = "talkcrm_google_state";
+
+/**
+ * URL the Settings page links to. It goes through our own connect route, which sets a
+ * random OAuth state cookie before redirecting to Google.
+ */
 export function getGoogleAuthUrl(): string {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!process.env.GOOGLE_CLIENT_ID) return "";
+  return "/api/auth/google/connect";
+}
+
+export function buildGoogleAuthorizeUrl(state: string): string {
   const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/google/callback`;
   const scope = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
   ].join(" ");
 
-  if (!clientId) return "";
-
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: process.env.GOOGLE_CLIENT_ID || "",
     redirect_uri: redirectUri,
     response_type: "code",
     scope,
     access_type: "offline",
     prompt: "consent",
+    state,
   });
 
   return `${GOOGLE_AUTH_URL}?${params.toString()}`;

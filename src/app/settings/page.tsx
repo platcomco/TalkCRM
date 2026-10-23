@@ -287,7 +287,8 @@ function SettingsContent() {
         </div>
       </div>
 
-      {/* Section 4: Demo Data & Testing Sandbox */}
+      {/* Section 4: Demo Data & Testing Sandbox (only when ENABLE_DEMO_DATA=true) */}
+      {status?.demoDataEnabled && (
       <div className="bg-slate-900 text-white rounded-xl p-6 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
@@ -310,6 +311,7 @@ function SettingsContent() {
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }
