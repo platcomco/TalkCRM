@@ -2,7 +2,8 @@ import { db } from "./db";
 import { normalizePhoneNumber, extractDigits } from "./phone-utils";
 
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
-const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth/v1/tokens/bearer";
+// From https://developer.api.intuit.com/.well-known/openid_configuration
+const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 const QBO_MINOR_VERSION = "75";
 const QBO_PAGE_SIZE = 1000; // QuickBooks query maximum
 
@@ -63,7 +64,7 @@ async function requestQboToken(body: Record<string, string>) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`QuickBooks token request failed: ${errorText}`);
+    throw new Error(`QuickBooks token request failed (HTTP ${response.status}): ${errorText.slice(0, 300) || response.statusText}`);
   }
 
   return await response.json();
