@@ -14,29 +14,22 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
-    // Log the raw payload until the UniFi Talk webhook format is confirmed.
-    // Header names only (not values) so the shared secret never lands in logs.
-    console.log(
-      "[unifi-talk webhook]",
-      JSON.stringify({
-        headers: Array.from(req.headers.keys()),
-        query: Array.from(req.nextUrl.searchParams.keys()),
-        body,
-      })
-    );
-
     // UniFi Talk payload (confirmed from live calls):
-    // { event: "call_started" | "call_answered" | "call_completed", call_id, direction: "in" | "out",
-    //   caller_number: "+1817...", dialed_number: "+1817...", caller_name? (on completed), timestamp: ms }
+    // { event: "call_started" | "call_answered" | "call_completed" | "call_cancelled", call_id,
+    //   direction: "in" | "out", caller_number, dialed_number, caller_name?, timestamp: ms }
+    // Inbound:  caller_number = outside caller (+1817...), dialed_number = our DID
+    // Outbound: caller_number = our extension (e.g. "1001"), dialed_number = outside number
     const callId = String(body.call_id || `call_${Date.now()}`);
     const rawEvent = String(body.event || "").toLowerCase();
     const eventTime = typeof body.timestamp === "number" ? new Date(body.timestamp) : new Date();
     const direction = body.direction === "out" ? "outbound" : "inbound";
 
-    const rawFrom = String(body.caller_number || "");
-    const toExtension = String(body.dialed_number || "");
-    // The customer is the far end: the caller on inbound calls, the dialed number on outbound calls
-    const remoteNumber = direction === "outbound" ? toExtension : rawFrom;
+    // The call log stores the outside party as fromNumber and our side (DID or extension) as
+    // toExtension, so customer matching and every call list show the customer's number either way
+    const callerNumber = String(body.caller_number || "");
+    const dialedNumber = String(body.dialed_number || "");
+    const remoteNumber = direction === "outbound" ? dialedNumber : callerNumber;
+    const localNumber = direction === "outbound" ? callerNumber : dialedNumber;
 
     const existing = await db.callLog.findUnique({ where: { callId } });
 
@@ -103,9 +96,9 @@ export async function POST(req: NextRequest) {
       },
       create: {
         callId,
-        fromNumber: rawFrom || "Unknown",
+        fromNumber: remoteNumber || "Unknown",
         normalizedFrom: normalizedFrom || digits || "unknown",
-        toExtension: toExtension || null,
+        toExtension: localNumber || null,
         direction,
         status,
         duration,
@@ -118,9 +111,9 @@ export async function POST(req: NextRequest) {
     const callPayload = {
       id: callLog.id,
       callId,
-      fromNumber: rawFrom || "Unknown",
+      fromNumber: remoteNumber || "Unknown",
       formattedFrom: formatPhoneDisplay(remoteNumber || digits),
-      toExtension,
+      toExtension: localNumber,
       direction: callLog.direction,
       status,
       timestamp: callLog.timestamp.toISOString(),
