@@ -20,6 +20,17 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
+    // Log the raw payload until the UniFi Talk webhook format is confirmed.
+    // Header names only (not values) so the shared secret never lands in logs.
+    console.log(
+      "[unifi-talk webhook]",
+      JSON.stringify({
+        headers: Array.from(req.headers.keys()),
+        query: Array.from(req.nextUrl.searchParams.keys()),
+        body,
+      })
+    );
+
     // Extract caller number from various possible PBX payload formats
     const rawFrom =
       body.caller ||
