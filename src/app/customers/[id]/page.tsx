@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { formatPhoneDisplay } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
+import { CustomerTags } from "@/components/CustomerTags";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -137,6 +138,13 @@ export default function CustomerDetailPage() {
               <p className="text-sm text-slate-600 flex items-center gap-1.5">
                 <Building2 className="w-4 h-4 text-slate-400" />
                 {customer.companyName}
+              </p>
+            )}
+            <CustomerTags customer={customer} className="pt-1" />
+            {customer.qboNotes && (
+              <p className="text-xs text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 max-w-xl whitespace-pre-line">
+                <span className="font-semibold text-amber-800">QuickBooks notes: </span>
+                {customer.qboNotes}
               </p>
             )}
           </div>

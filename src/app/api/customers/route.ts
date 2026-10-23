@@ -14,6 +14,10 @@ export async function GET(req: NextRequest) {
           { primaryPhone: { contains: q } },
           { mobilePhone: { contains: q } },
           { normalizedPhones: { contains: extractDigits(q) || q } },
+          { accountNumber: { contains: q } },
+          { qboNotes: { contains: q } },
+          { customerType: { contains: q } },
+          { parentName: { contains: q } },
         ],
       }
     : {};

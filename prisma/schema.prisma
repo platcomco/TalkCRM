@@ -18,6 +18,10 @@ model Customer {
   billingAddress   String?
   qboId            String?        @unique
   qboBalance       Float?         @default(0.0)
+  qboNotes         String?        // QuickBooks customer "Notes" field
+  customerType     String?        // QuickBooks "Client type" (DIRECTV vertical, e.g. BAR)
+  parentName       String?        // Parent client for QuickBooks sub-clients
+  accountNumber    String?        // DIRECTV account number, extracted from notes / company name
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 

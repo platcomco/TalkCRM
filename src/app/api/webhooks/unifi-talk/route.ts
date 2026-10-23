@@ -68,8 +68,11 @@ export async function POST(req: NextRequest) {
     // Match on the 10-digit national number, which every stored phone format contains
     const matchDigits = digits.length >= 10 ? digits.slice(-10) : digits;
 
-    // Lookup customer in database by normalized phone or digits
+    // Lookup customer in database by normalized phone or digits. Several accounts can share a
+    // number (e.g. QuickBooks sub-clients of one parent): keep the customer already linked to this
+    // call, otherwise prefer a top-level account, and report how many others share the number.
     let customer: any = null;
+    let otherMatches = 0;
     if (matchDigits.length >= 7) {
       const candidates = await db.customer.findMany({
         where: {
@@ -84,12 +87,16 @@ export async function POST(req: NextRequest) {
             where: { status: { in: ["Open", "Overdue"] } },
           },
         },
-        take: 1,
+        orderBy: { name: "asc" },
+        take: 50,
       });
 
-      if (candidates.length > 0) {
-        customer = candidates[0];
-      }
+      customer =
+        candidates.find((c) => c.id === existing?.customerId) ||
+        candidates.find((c) => !c.parentName) ||
+        candidates[0] ||
+        null;
+      otherMatches = Math.max(0, candidates.length - 1);
     }
 
     // Upsert Call Log in database
@@ -132,6 +139,10 @@ export async function POST(req: NextRequest) {
             email: customer.email,
             qboBalance: customer.qboBalance,
             openInvoicesCount: customer.invoices?.length || 0,
+            customerType: customer.customerType,
+            accountNumber: customer.accountNumber,
+            parentName: customer.parentName,
+            otherMatches,
           }
         : null,
     };

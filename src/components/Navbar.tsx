@@ -120,7 +120,7 @@ export function Navbar() {
             <form onSubmit={handleSearch} className="relative hidden sm:block w-64">
               <input
                 type="text"
-                placeholder="Search phone, name, invoice..."
+                placeholder="Search name, phone, DTV acct #..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"

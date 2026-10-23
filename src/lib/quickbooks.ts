@@ -175,8 +175,49 @@ async function qboQueryAll(entity: string, where: string): Promise<any[]> {
   }
 }
 
+/**
+ * Finds a DIRECTV account number (8-9 digits): first an explicit "Acct #12345678" in the notes,
+ * then a standalone 8-9 digit number in the notes or company name. Phone numbers (10+ digits)
+ * never match.
+ */
+export function extractAccountNumber(...sources: (string | null | undefined)[]): string | null {
+  const texts = sources.filter((s): s is string => !!s);
+  for (const text of texts) {
+    const labeled = text.match(/\bacc(?:oun)?t\.?\s*(?:no\.?|number)?\s*#?\s*(\d{8,9})\b/i);
+    if (labeled) return labeled[1];
+  }
+  for (const text of texts) {
+    const bare = text.match(/(?<!\d)(\d{8,9})(?!\d)/);
+    if (bare) return bare[1];
+  }
+  return null;
+}
+
+function formatQboAddress(addr: any): string | null {
+  if (!addr) return null;
+  const street = [addr.Line1, addr.Line2, addr.Line3, addr.Line4, addr.Line5].filter(Boolean).join(", ");
+  const cityLine = [addr.City, [addr.CountrySubDivisionCode, addr.PostalCode].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(", ");
+  return [street, cityLine].filter(Boolean).join(", ") || null;
+}
+
+/** Maps CustomerType ids to names (the Customer record only carries the id). */
+async function getQboCustomerTypes(): Promise<Map<string, string>> {
+  try {
+    const types = await qboQueryAll("CustomerType", "Active = true");
+    return new Map(types.map((t: any) => [String(t.Id), t.Name]));
+  } catch (err) {
+    // Client types aren't available on every QuickBooks plan; sync the rest without them
+    console.error("Could not load QuickBooks client types:", err);
+    return new Map();
+  }
+}
+
 export async function syncQboCustomers() {
   const customers = await qboQueryAll("Customer", "Active = true");
+  const customerTypes = await getQboCustomerTypes();
+  const displayNameById = new Map(customers.map((c: any) => [String(c.Id), c.DisplayName as string]));
 
   let syncedCount = 0;
   for (const c of customers) {
@@ -186,6 +227,13 @@ export async function syncQboCustomers() {
     const name = c.DisplayName || `${c.GivenName || ""} ${c.FamilyName || ""}`.trim() || "Unknown";
     const companyName = c.CompanyName || null;
     const qboBalance = parseFloat(c.Balance || "0");
+    const qboNotes = c.Notes || null;
+    const customerType = customerTypes.get(String(c.CustomerTypeRef?.value)) || null;
+    const parentName = c.ParentRef?.value
+      ? displayNameById.get(String(c.ParentRef.value)) || c.ParentRef.name || null
+      : null;
+    const accountNumber = extractAccountNumber(qboNotes, companyName, c.Suffix);
+    const billingAddress = formatQboAddress(c.BillAddr);
 
     const phoneDigits = [extractDigits(primaryPhone || ""), extractDigits(mobilePhone || "")].filter(Boolean);
     const normalizedList = [
@@ -193,27 +241,25 @@ export async function syncQboCustomers() {
       ...phoneDigits.map((d) => normalizePhoneNumber(d)),
     ].join(",");
 
+    const data = {
+      name,
+      companyName,
+      primaryPhone,
+      mobilePhone,
+      normalizedPhones: normalizedList,
+      email,
+      billingAddress,
+      qboBalance,
+      qboNotes,
+      customerType,
+      parentName,
+      accountNumber,
+    };
+
     await db.customer.upsert({
       where: { qboId: String(c.Id) },
-      update: {
-        name,
-        companyName,
-        primaryPhone,
-        mobilePhone,
-        normalizedPhones: normalizedList,
-        email,
-        qboBalance,
-      },
-      create: {
-        qboId: String(c.Id),
-        name,
-        companyName,
-        primaryPhone,
-        mobilePhone,
-        normalizedPhones: normalizedList,
-        email,
-        qboBalance,
-      },
+      update: data,
+      create: { qboId: String(c.Id), ...data },
     });
     syncedCount++;
   }

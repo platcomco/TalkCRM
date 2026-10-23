@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Users, Search, Plus, Phone, Mail, Building2, ExternalLink, DollarSign, X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { formatPhoneDisplay, extractDigits } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
+import { CustomerTags } from "@/components/CustomerTags";
 
 type SortKey = "name" | "contact" | "balance" | "activity";
 type SortDir = "asc" | "desc";
@@ -202,7 +203,7 @@ function CustomersContent() {
       <div className="relative max-w-md">
         <input
           type="text"
-          placeholder="Search by name, company, email, or phone number..."
+          placeholder="Search by name, company, phone, DTV account #, client type, or notes..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
@@ -248,6 +249,7 @@ function CustomersContent() {
                             {c.companyName}
                           </span>
                         )}
+                        <CustomerTags customer={c} className="mt-1" />
                       </td>
                       <td className="py-3.5 px-4 space-y-1">
                         {c.primaryPhone && (

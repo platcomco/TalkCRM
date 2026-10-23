@@ -16,6 +16,10 @@ type CallPayload = {
     email?: string | null;
     qboBalance?: number | null;
     openInvoicesCount?: number;
+    customerType?: string | null;
+    accountNumber?: string | null;
+    parentName?: string | null;
+    otherMatches?: number; // other customers sharing this phone number
   } | null;
 };
 

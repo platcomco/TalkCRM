@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PhoneIncoming, X, ExternalLink, FileText, Building2, User, DollarSign, Check, Plus } from "lucide-react";
 import { CallPayload } from "@/lib/event-emitter";
 import { notifyCallsChanged } from "@/lib/live-calls";
+import { CustomerTags } from "@/components/CustomerTags";
 
 export function CallScreenPop() {
   const [activeCall, setActiveCall] = useState<CallPayload | null>(null);
@@ -192,6 +193,16 @@ export function CallScreenPop() {
                         <Building2 className="w-3.5 h-3.5 text-slate-400" />
                         {customer.companyName}
                       </p>
+                    )}
+                    <CustomerTags customer={customer} className="mt-1.5" />
+                    {!!customer.otherMatches && (
+                      <Link
+                        href={`/customers?q=${encodeURIComponent(activeCall.fromNumber.replace(/\D/g, "").slice(-10))}`}
+                        onClick={() => setActiveCall(null)}
+                        className="block text-[11px] text-amber-700 hover:text-amber-800 underline mt-1"
+                      >
+                        {customer.otherMatches} other account{customer.otherMatches === 1 ? "" : "s"} share this number
+                      </Link>
                     )}
                   </div>
                   <Link
