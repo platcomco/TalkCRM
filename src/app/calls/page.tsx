@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Radio, PhoneIncoming, PhoneCall, ExternalLink, Filter, Clock } from "lucide-react";
 import { formatPhoneDisplay } from "@/lib/phone-utils";
+import { useCallsChanged } from "@/lib/live-calls";
 
 export default function CallsPage() {
   const [calls, setCalls] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const fetchCalls = async (status: string = "") => {
-    setLoading(true);
+  // Background refreshes skip the loading state so the table doesn't flash
+  const fetchCalls = async (status: string = "", background = false) => {
+    if (!background) setLoading(true);
     try {
       const url = status ? `/api/calls?status=${encodeURIComponent(status)}` : "/api/calls";
       const res = await fetch(url);
@@ -27,6 +29,8 @@ export default function CallsPage() {
   useEffect(() => {
     fetchCalls(statusFilter);
   }, [statusFilter]);
+
+  useCallsChanged(() => fetchCalls(statusFilter, true));
 
   return (
     <div className="space-y-6">

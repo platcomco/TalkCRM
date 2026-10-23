@@ -18,9 +18,10 @@ export async function GET(req: NextRequest) {
       }
     : {};
 
+  // Returns every match (the directory sorts client-side by any column), with a safety cap
   const customers = await db.customer.findMany({
     where,
-    orderBy: { updatedAt: "desc" },
+    orderBy: { name: "asc" },
     include: {
       _count: {
         select: {
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
         },
       },
     },
-    take: 50,
+    take: 5000,
   });
 
   return NextResponse.json(customers);

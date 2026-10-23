@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatPhoneDisplay } from "@/lib/phone-utils";
 import { PhoneCall, Users, DollarSign, Clock, AlertTriangle, ArrowRight, PhoneIncoming, ShieldCheck, ExternalLink, FileText } from "lucide-react";
+import { LiveRefresh } from "@/components/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <LiveRefresh />
       {/* Top Welcome & PBX Status Banner */}
       <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { PhoneIncoming, X, ExternalLink, FileText, Building2, User, DollarSign, Check, Plus } from "lucide-react";
 import { CallPayload } from "@/lib/event-emitter";
+import { notifyCallsChanged } from "@/lib/live-calls";
 
 export function CallScreenPop() {
   const [activeCall, setActiveCall] = useState<CallPayload | null>(null);
@@ -43,17 +44,31 @@ export function CallScreenPop() {
     }
   };
 
+  // Read through a ref so toggling mute doesn't tear down and reopen the SSE connection
+  const playChimeRef = useRef(playChime);
+  playChimeRef.current = playChime;
+
   useEffect(() => {
     let eventSource: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+    let hasConnected = false;
 
     function connectSSE() {
       eventSource = new EventSource("/api/events");
+
+      // After a reconnect, events may have been missed while the stream was down: resync pages
+      eventSource.addEventListener("connected", () => {
+        if (hasConnected) notifyCallsChanged();
+        hasConnected = true;
+      });
 
       eventSource.addEventListener("incoming_call", (e) => {
         try {
           const payload: CallPayload = JSON.parse(e.data);
           setActiveCall(payload);
-          playChime();
+          playChimeRef.current();
+          notifyCallsChanged({ customerId: payload.customer?.id });
         } catch (err) {
           console.error("Error parsing incoming call event:", err);
         }
@@ -63,6 +78,7 @@ export function CallScreenPop() {
         try {
           const payload: CallPayload = JSON.parse(e.data);
           setActiveCall((prev) => (prev && prev.callId === payload.callId ? { ...prev, ...payload } : prev));
+          notifyCallsChanged({ customerId: payload.customer?.id });
         } catch (err) {
           console.error("Error parsing call update event:", err);
         }
@@ -73,10 +89,11 @@ export function CallScreenPop() {
           const payload: CallPayload = JSON.parse(e.data);
           setActiveCall((prev) => {
             if (prev && prev.callId === payload.callId) {
-              return { ...prev, status: "completed" };
+              return { ...prev, status: payload.status };
             }
             return prev;
           });
+          notifyCallsChanged({ customerId: payload.customer?.id });
         } catch (err) {
           console.error("Error parsing call ended event:", err);
         }
@@ -84,16 +101,18 @@ export function CallScreenPop() {
 
       eventSource.onerror = () => {
         eventSource?.close();
-        setTimeout(connectSSE, 5000); // Reconnect after 5s
+        if (!closed) reconnectTimer = setTimeout(connectSSE, 5000); // Reconnect after 5s
       };
     }
 
     connectSSE();
 
     return () => {
+      closed = true;
+      clearTimeout(reconnectTimer);
       eventSource?.close();
     };
-  }, [isMuted]);
+  }, []);
 
   const handleSaveNote = async () => {
     if (!noteContent.trim() || !activeCall) return;

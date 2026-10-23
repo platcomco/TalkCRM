@@ -35,10 +35,9 @@ declare global {
   var callEventManager: CallEventManager | undefined;
 }
 
+// Always share one instance through globalThis: the webhook route and the SSE route may be
+// bundled separately, and each must see the same emitter or screen-pops silently stop.
 export const callEvents = global.callEventManager || new CallEventManager();
-
-if (process.env.NODE_ENV !== "production") {
-  global.callEventManager = callEvents;
-}
+global.callEventManager = callEvents;
 
 export type { CallPayload };

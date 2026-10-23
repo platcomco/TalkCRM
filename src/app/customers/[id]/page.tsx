@@ -23,6 +23,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { formatPhoneDisplay } from "@/lib/phone-utils";
+import { useCallsChanged } from "@/lib/live-calls";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -53,6 +54,11 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     fetchCustomer();
   }, [id]);
+
+  // Refresh when a call for this customer changes (or after a reconnect, when it's unknown)
+  useCallsChanged(({ customerId }) => {
+    if (customerId === undefined || customerId === id) fetchCustomer();
+  });
 
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();

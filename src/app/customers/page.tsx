@@ -1,10 +1,81 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Users, Search, Plus, Phone, Mail, Building2, ExternalLink, DollarSign, X } from "lucide-react";
-import { formatPhoneDisplay } from "@/lib/phone-utils";
+import { Users, Search, Plus, Phone, Mail, Building2, ExternalLink, DollarSign, X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { formatPhoneDisplay, extractDigits } from "@/lib/phone-utils";
+import { useCallsChanged } from "@/lib/live-calls";
+
+type SortKey = "name" | "contact" | "balance" | "activity";
+type SortDir = "asc" | "desc";
+type SortState = { key: SortKey; dir: SortDir };
+
+const SORT_STORAGE_KEY = "talkcrm.customers.sort";
+const DEFAULT_SORT: SortState = { key: "name", dir: "asc" };
+// Columns that read best largest-first when first clicked
+const DESC_FIRST: SortKey[] = ["balance", "activity"];
+
+// Natural order ("Unit 2" before "Unit 10"), case-insensitive
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+function compareCustomers(a: any, b: any, { key, dir }: SortState): number {
+  const sign = dir === "asc" ? 1 : -1;
+  const byName = collator.compare(a.name || "", b.name || "");
+
+  if (key === "name") return sign * byName;
+
+  if (key === "contact") {
+    const pa = extractDigits(a.primaryPhone || a.mobilePhone || "");
+    const pb = extractDigits(b.primaryPhone || b.mobilePhone || "");
+    // Customers without a phone always go last
+    if (!pa || !pb) return pa ? -1 : pb ? 1 : byName;
+    return sign * collator.compare(pa, pb) || byName;
+  }
+
+  const va = key === "balance" ? a.qboBalance || 0 : a._count?.calls || 0;
+  const vb = key === "balance" ? b.qboBalance || 0 : b._count?.calls || 0;
+  return sign * (va - vb) || byName;
+}
+
+function loadSort(): SortState {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY) || "null");
+    if (saved && ["name", "contact", "balance", "activity"].includes(saved.key) && ["asc", "desc"].includes(saved.dir)) {
+      return saved;
+    }
+  } catch {
+    // Storage unavailable: fall back to the default
+  }
+  return DEFAULT_SORT;
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: SortState;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className="py-3 px-4" aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 hover:text-blue-600 transition ${active ? "text-blue-700" : ""}`}
+      >
+        <span>{label}</span>
+        <Icon className={`w-3 h-3 ${active ? "" : "text-slate-400"}`} />
+      </button>
+    </th>
+  );
+}
 
 function CustomersContent() {
   const searchParams = useSearchParams();
@@ -27,8 +98,35 @@ function CustomersContent() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchCustomers = async (search: string = "") => {
-    setLoading(true);
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+
+  useEffect(() => {
+    setSort(loadSort());
+  }, []);
+
+  const handleSort = (key: SortKey) => {
+    setSort((prev) => {
+      const next: SortState =
+        prev.key === key
+          ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+          : { key, dir: DESC_FIRST.includes(key) ? "desc" : "asc" };
+      try {
+        localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Not persisted; sorting still works for this visit
+      }
+      return next;
+    });
+  };
+
+  const sortedCustomers = useMemo(
+    () => [...customers].sort((a, b) => compareCustomers(a, b, sort)),
+    [customers, sort]
+  );
+
+  // Background refreshes skip the loading state so the table doesn't flash
+  const fetchCustomers = async (search: string = "", background = false) => {
+    if (!background) setLoading(true);
     try {
       const res = await fetch(`/api/customers?q=${encodeURIComponent(search)}`);
       const data = await res.json();
@@ -43,6 +141,9 @@ function CustomersContent() {
   useEffect(() => {
     fetchCustomers(query);
   }, [query]);
+
+  // Keep call counts current as calls come in
+  useCallsChanged(() => fetchCustomers(query, true));
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,15 +223,15 @@ function CustomersContent() {
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-4">Customer / Company</th>
-                  <th className="py-3 px-4">Contact Details</th>
-                  <th className="py-3 px-4">QBO Balance</th>
-                  <th className="py-3 px-4">Activity</th>
+                  <SortHeader label="Customer / Company" sortKey="name" sort={sort} onSort={handleSort} />
+                  <SortHeader label="Contact Details" sortKey="contact" sort={sort} onSort={handleSort} />
+                  <SortHeader label="QBO Balance" sortKey="balance" sort={sort} onSort={handleSort} />
+                  <SortHeader label="Activity" sortKey="activity" sort={sort} onSort={handleSort} />
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {customers.map((c) => {
+                {sortedCustomers.map((c) => {
                   const hasBalance = (c.qboBalance || 0) > 0;
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/80 transition">
