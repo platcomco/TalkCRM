@@ -69,6 +69,21 @@ function SettingsContent() {
     }
   };
 
+  const handleDisconnectQbo = async () => {
+    if (!confirm("Disconnect QuickBooks? TalkCRM will stop syncing until someone connects it again. Customers already synced stay in TalkCRM.")) {
+      return;
+    }
+    setActionMessage(null);
+    try {
+      const res = await fetch("/api/integrations/quickbooks/disconnect", { method: "POST" });
+      const data = await res.json();
+      setActionMessage(res.ok ? "QuickBooks disconnected." : `Disconnect failed: ${data.error}`);
+      fetchStatus();
+    } catch (err: any) {
+      setActionMessage(`Disconnect failed: ${err.message}`);
+    }
+  };
+
   const handleSeedDemo = async () => {
     setIsSeeding(true);
     setActionMessage(null);
@@ -224,6 +239,15 @@ function SettingsContent() {
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
               <span>{isSyncing ? "Syncing..." : "Sync Customers Now"}</span>
             </button>
+
+            {status?.quickbooks?.connected && (
+              <button
+                onClick={handleDisconnectQbo}
+                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold px-3 py-2 rounded-lg transition"
+              >
+                Disconnect QuickBooks
+              </button>
+            )}
           </div>
 
           <p className="text-slate-500 text-[11px]">

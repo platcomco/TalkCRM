@@ -6,6 +6,8 @@ import { PhoneIncoming, X, ExternalLink, FileText, Building2, User, DollarSign, 
 import { CallPayload } from "@/lib/event-emitter";
 import { notifyCallsChanged } from "@/lib/live-calls";
 import { CustomerTags } from "@/components/CustomerTags";
+import { usePathname } from "next/navigation";
+import { isPublicPage } from "@/lib/public-pages";
 
 export function CallScreenPop() {
   const [activeCall, setActiveCall] = useState<CallPayload | null>(null);
@@ -49,7 +51,12 @@ export function CallScreenPop() {
   const playChimeRef = useRef(playChime);
   playChimeRef.current = playChime;
 
+  // Public pages (login, terms, privacy) have no session, so don't open the call stream there
+  const onPublicPage = isPublicPage(usePathname());
+
   useEffect(() => {
+    if (onPublicPage) return;
+
     let eventSource: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let closed = false;
@@ -113,7 +120,7 @@ export function CallScreenPop() {
       clearTimeout(reconnectTimer);
       eventSource?.close();
     };
-  }, []);
+  }, [onPublicPage]);
 
   const handleSaveNote = async () => {
     if (!noteContent.trim() || !activeCall) return;

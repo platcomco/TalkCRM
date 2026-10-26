@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySessionToken, SESSION_COOKIE_NAME } from "@/lib/auth";
+import { PUBLIC_PAGES } from "@/lib/public-pages";
 
 // Exact paths reachable without a session. Everything else (including the QuickBooks and
 // Gmail connect/callback routes) requires a logged-in user, so nobody outside can link their
 // own QuickBooks company or mailbox to the CRM.
 const PUBLIC_PATHS = new Set([
-  "/login",
+  ...PUBLIC_PAGES, // login, terms, privacy
   "/api/auth/login", // starts Google sign-in
   "/api/auth/callback", // Google sign-in callback
   "/api/auth/logout",

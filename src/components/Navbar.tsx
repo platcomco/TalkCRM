@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { PhoneCall, Users, Settings, Search, Radio, BellRing, LogOut, User as UserIcon } from "lucide-react";
+import { isPublicPage } from "@/lib/public-pages";
 
 export function Navbar() {
   const pathname = usePathname();
@@ -14,8 +15,8 @@ export function Navbar() {
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    // Only fetch auth if not on login page
-    if (pathname !== "/login") {
+    // Only fetch auth on app pages (public pages have no session)
+    if (!isPublicPage(pathname)) {
       fetch("/api/auth/me")
         .then((res) => res.json())
         .then((data) => {
@@ -27,7 +28,7 @@ export function Navbar() {
     }
   }, [pathname]);
 
-  if (pathname === "/login") {
+  if (isPublicPage(pathname)) {
     return null;
   }
 

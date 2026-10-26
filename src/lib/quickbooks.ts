@@ -4,6 +4,7 @@ import { normalizePhoneNumber, extractDigits } from "./phone-utils";
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 // From https://developer.api.intuit.com/.well-known/openid_configuration
 const QBO_TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
+const QBO_REVOKE_URL = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke";
 const QBO_MINOR_VERSION = "75";
 const QBO_PAGE_SIZE = 1000; // QuickBooks query maximum
 
@@ -96,6 +97,39 @@ export async function exchangeQboToken(code: string, realmId: string) {
       metadata: JSON.stringify({ connectedAt: new Date().toISOString() }),
     },
   });
+}
+
+/**
+ * Disconnects QuickBooks: revokes the tokens with Intuit (revoking the refresh token also
+ * revokes its access token) and removes the stored connection. The local connection is
+ * removed even if Intuit can't be reached, so the app stops using QuickBooks either way.
+ */
+export async function disconnectQbo(): Promise<{ revoked: boolean }> {
+  const connection = await getQboConnection();
+  let revoked = false;
+
+  const token = connection?.refreshToken || connection?.accessToken;
+  const clientId = process.env.QBO_CLIENT_ID;
+  const clientSecret = process.env.QBO_CLIENT_SECRET;
+  if (token && clientId && clientSecret) {
+    try {
+      const res = await fetch(QBO_REVOKE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+        },
+        body: JSON.stringify({ token }),
+      });
+      revoked = res.ok;
+    } catch (err) {
+      console.error("QuickBooks token revoke failed:", err);
+    }
+  }
+
+  await db.integration.deleteMany({ where: { provider: "quickbooks" } });
+  return { revoked };
 }
 
 /**
