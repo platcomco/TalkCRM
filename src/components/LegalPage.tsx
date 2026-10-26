@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PhoneCall } from "lucide-react";
 
 export const LEGAL_EFFECTIVE_DATE = "October 26, 2026";
-export const LEGAL_CONTACT_EMAIL = "james@platinumcom.co";
+export const LEGAL_CONTACT_EMAIL = "support@platinumcom.co";
 
 /** Shared layout for the public Terms and Privacy pages (no login required). */
 export function LegalPage({ title, children }: { title: string; children: React.ReactNode }) {
