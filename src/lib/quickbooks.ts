@@ -195,6 +195,11 @@ async function qboQueryAll(entity: string, where: string): Promise<any[]> {
       },
     });
 
+    if (response.status === 401) {
+      // Token rejected even though it wasn't due to expire, e.g. the app was disconnected from
+      // inside QuickBooks. Refreshing won't help; the user has to authorize again.
+      throw new Error("QuickBooks authorization was revoked or has expired. Please reconnect QuickBooks in Settings.");
+    }
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`QuickBooks API error (${response.status}): ${errorText.slice(0, 300)}`);
