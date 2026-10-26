@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
     res.cookies.delete({ name: QBO_STATE_COOKIE, path: "/api/auth/quickbooks" });
     return res;
   } catch (err: any) {
+    console.error("[quickbooks] connect failed:", err);
     return NextResponse.redirect(`${appUrl}/settings?error=${encodeURIComponent(err.message)}`);
   }
 }

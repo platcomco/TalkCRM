@@ -43,6 +43,18 @@ export function buildQboAuthorizeUrl(state: string): string {
   return `${QBO_AUTH_URL}?${params.toString()}`;
 }
 
+/**
+ * Logs a failed Intuit response to the server log (docker logs talkcrm) with its intuit_tid,
+ * the transaction id Intuit support asks for, and returns an Error that includes it too.
+ */
+async function qboFailure(context: string, response: Response, userMessage?: string): Promise<Error> {
+  const tid = response.headers.get("intuit_tid") || "none";
+  const body = (await response.text().catch(() => "")).slice(0, 500);
+  console.error(`[quickbooks] ${context} failed: HTTP ${response.status} intuit_tid=${tid} ${body}`);
+  const detail = userMessage || `${context} failed (HTTP ${response.status}): ${body.slice(0, 300) || response.statusText}`;
+  return new Error(`${detail} [intuit_tid ${tid}]`);
+}
+
 async function requestQboToken(body: Record<string, string>) {
   const clientId = process.env.QBO_CLIENT_ID;
   const clientSecret = process.env.QBO_CLIENT_SECRET;
@@ -64,8 +76,7 @@ async function requestQboToken(body: Record<string, string>) {
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`QuickBooks token request failed (HTTP ${response.status}): ${errorText.slice(0, 300) || response.statusText}`);
+    throw await qboFailure(`QuickBooks token request (${body.grant_type})`, response);
   }
 
   return await response.json();
@@ -123,6 +134,7 @@ export async function disconnectQbo(): Promise<{ revoked: boolean }> {
         body: JSON.stringify({ token }),
       });
       revoked = res.ok;
+      if (!res.ok) await qboFailure("QuickBooks token revoke", res);
     } catch (err) {
       console.error("QuickBooks token revoke failed:", err);
     }
@@ -198,11 +210,14 @@ async function qboQueryAll(entity: string, where: string): Promise<any[]> {
     if (response.status === 401) {
       // Token rejected even though it wasn't due to expire, e.g. the app was disconnected from
       // inside QuickBooks. Refreshing won't help; the user has to authorize again.
-      throw new Error("QuickBooks authorization was revoked or has expired. Please reconnect QuickBooks in Settings.");
+      throw await qboFailure(
+        `QuickBooks ${entity} query`,
+        response,
+        "QuickBooks authorization was revoked or has expired. Please reconnect QuickBooks in Settings."
+      );
     }
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`QuickBooks API error (${response.status}): ${errorText.slice(0, 300)}`);
+      throw await qboFailure(`QuickBooks ${entity} query`, response);
     }
 
     const data = await response.json();
