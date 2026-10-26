@@ -8,7 +8,7 @@ import { AppFooter } from "@/components/AppFooter";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "TalkCRM - UniFi Talk PBX & QuickBooks Online CRM",
+  title: "TalkCRM · Platinum Communication",
   description: "Self-hosted CRM with real-time UniFi Talk call screen-pops, QuickBooks customer billing, and Gmail conversations.",
 };
 

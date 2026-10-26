@@ -53,8 +53,9 @@ export const config = {
      * Match all request paths except:
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico
+     * - favicon.ico, icon.png, apple-icon.png (browser/app icons)
+     * - brand/ (company logo images, shown on the public login and legal pages)
      */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico$|icon\\.png$|apple-icon\\.png$|brand/).*)",
   ],
 };

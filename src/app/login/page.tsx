@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { PhoneCall, ShieldCheck, AlertCircle, Lock } from "lucide-react";
+import { ShieldCheck, AlertCircle, Lock } from "lucide-react";
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -36,12 +36,10 @@ function LoginContent() {
     <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-12">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-2xl border border-slate-100">
         <div className="text-center space-y-2">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-blue-600 items-center justify-center text-white shadow-lg shadow-blue-500/30">
-            <PhoneCall className="w-8 h-8" />
-          </div>
+          <img src="/brand/logo-mark.png" alt="Platinum Communication" className="inline-block w-16 h-16" />
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">TalkCRM</h1>
           <p className="text-xs text-slate-500">
-            UniFi Talk Telephony & QuickBooks Customer Portal
+            Platinum Communication Company · Calls & customer accounts
           </p>
         </div>
 

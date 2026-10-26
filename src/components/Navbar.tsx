@@ -3,15 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { PhoneCall, Users, Settings, Search, Radio, BellRing, LogOut, User as UserIcon } from "lucide-react";
+import { PhoneCall, Users, Settings, Search, Radio, LogOut, User as UserIcon } from "lucide-react";
 import { isPublicPage } from "@/lib/public-pages";
 
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [simulatedMessage, setSimulatedMessage] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
@@ -39,37 +37,6 @@ export function Navbar() {
     }
   };
 
-  const handleSimulateCall = async (phone: string = "5552345678") => {
-    setIsSimulating(true);
-    setSimulatedMessage(null);
-    try {
-      const res = await fetch("/api/webhooks/unifi-talk", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-unifi-secret": "talkcrm-secret-token",
-        },
-        body: JSON.stringify({
-          event: "call.start",
-          status: "ringing",
-          caller: phone,
-          caller_id_number: phone,
-          callee: "101",
-          direction: "inbound",
-          call_id: `sim_${Date.now()}`,
-          timestamp: new Date().toISOString(),
-        }),
-      });
-      const data = await res.json();
-      setSimulatedMessage(`Call pop triggered for ${phone}!`);
-      setTimeout(() => setSimulatedMessage(null), 3000);
-    } catch (err) {
-      console.error("Simulation error:", err);
-    } finally {
-      setIsSimulating(false);
-    }
-  };
-
   const navItems = [
     { label: "Dashboard", href: "/", icon: PhoneCall },
     { label: "Calls", href: "/calls", icon: Radio },
@@ -84,12 +51,10 @@ export function Navbar() {
           {/* Logo & Brand */}
           <div className="flex items-center space-x-6">
             <Link href="/" className="flex items-center space-x-2">
-              <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                <PhoneCall className="w-5 h-5" />
-              </div>
+              <img src="/brand/logo-mark.png" alt="Platinum Communication" className="w-9 h-9 shrink-0" />
               <div className="flex flex-col">
                 <span className="font-bold text-lg leading-tight text-slate-900 tracking-tight">TalkCRM</span>
-                <span className="text-[10px] text-blue-600 font-medium tracking-wider uppercase">UniFi + QuickBooks</span>
+                <span className="text-[10px] text-blue-600 font-medium tracking-wider uppercase whitespace-nowrap">Platinum Communication</span>
               </div>
             </Link>
 
@@ -129,24 +94,6 @@ export function Navbar() {
               <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2" />
             </form>
 
-            {/* Test Call Trigger */}
-            <button
-              onClick={() => handleSimulateCall("5552345678")}
-              disabled={isSimulating}
-              className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
-              title="Trigger a simulated incoming UniFi Talk call from Marcus Vance"
-            >
-              <BellRing className="w-3.5 h-3.5 text-emerald-600" />
-              <span>{isSimulating ? "Ringing..." : "Test Call Pop"}</span>
-            </button>
-
-            {/* PBX Live Status Indicator */}
-            <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 bg-slate-100 rounded-full border border-slate-200 text-[11px] font-medium text-slate-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>PBX:</span>
-              <span className="text-emerald-700 font-semibold">Active</span>
-            </div>
-
             {/* Employee Profile & Logout */}
             {currentUser && (
               <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
@@ -176,11 +123,6 @@ export function Navbar() {
           </div>
         </div>
       </div>
-      {simulatedMessage && (
-        <div className="bg-emerald-600 text-white text-xs py-1 text-center font-medium transition-all">
-          {simulatedMessage}
-        </div>
-      )}
     </header>
   );
 }

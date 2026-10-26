@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { PhoneCall } from "lucide-react";
 
 export const LEGAL_EFFECTIVE_DATE = "October 26, 2026";
 export const LEGAL_CONTACT_EMAIL = "support@platinumcom.co";
@@ -9,10 +8,9 @@ export function LegalPage({ title, children }: { title: string; children: React.
   return (
     <div className="max-w-3xl mx-auto py-6">
       <div className="flex items-center gap-2.5 mb-6">
-        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white">
-          <PhoneCall className="w-5 h-5" />
-        </div>
+        <img src="/brand/logo-mark.png" alt="Platinum Communication" className="w-9 h-9" />
         <span className="font-bold text-slate-900 text-lg">TalkCRM</span>
+        <span className="text-xs text-slate-500">by Platinum Communication Company</span>
       </div>
 
       <article className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-5 text-sm leading-relaxed text-slate-700 [&_h2]:text-base [&_h2]:font-bold [&_h2]:text-slate-900 [&_h2]:pt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1">
