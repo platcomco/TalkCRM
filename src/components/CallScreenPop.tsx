@@ -107,8 +107,20 @@ export function CallScreenPop() {
         }
       });
 
-      eventSource.onerror = () => {
+      eventSource.onerror = async () => {
         eventSource?.close();
+        if (closed) return;
+        // If the session expired, go to sign-in instead of retrying: endless 401s from an idle
+        // tab would look like an attack and get the user's IP banned by SWAG's fail2ban
+        try {
+          const me = await fetch("/api/auth/me").then((r) => r.json());
+          if (!me?.user && !closed) {
+            window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
+        } catch {
+          // Server unreachable (restart, network blip): keep retrying below
+        }
         if (!closed) reconnectTimer = setTimeout(connectSSE, 5000); // Reconnect after 5s
       };
     }
