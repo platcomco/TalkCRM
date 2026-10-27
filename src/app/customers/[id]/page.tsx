@@ -104,6 +104,8 @@ export default function CustomerDetailPage() {
 
   const qboBalance = customer.qboBalance || 0;
   const isOverdue = qboBalance > 0;
+  // "ok" | "not_connected" | "expired" | "error" (older API responses have no status)
+  const emailStatus: string = customer.emailStatus || "ok";
 
   return (
     <div className="space-y-6">
@@ -323,7 +325,7 @@ export default function CustomerDetailPage() {
               <div className="text-center py-8 text-slate-500 text-sm">
                 Add an email address to this customer to enable Gmail thread lookup.
               </div>
-            ) : !customer.emails || customer.emails.length === 0 ? (
+            ) : emailStatus === "not_connected" ? (
               <div className="border border-dashed border-slate-200 rounded-xl p-8 text-center space-y-2">
                 <p className="text-slate-600 font-medium text-sm">No live Google Workspace account connected yet.</p>
                 <p className="text-slate-500 text-xs max-w-md mx-auto">
@@ -335,6 +337,36 @@ export default function CustomerDetailPage() {
                 >
                   Configure Google Integration
                 </Link>
+              </div>
+            ) : emailStatus === "expired" ? (
+              <div className="border border-amber-200 bg-amber-50 rounded-xl p-8 text-center space-y-2">
+                <p className="text-amber-900 font-medium text-sm">Google connection expired.</p>
+                <p className="text-amber-800 text-xs max-w-md mx-auto">
+                  {customer.emailMessage || "Google authorization expired or was revoked."} Reconnect in Settings to resume Gmail lookups.
+                </p>
+                <Link
+                  href="/settings"
+                  className="inline-block mt-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition"
+                >
+                  Reconnect Google
+                </Link>
+              </div>
+            ) : emailStatus === "error" ? (
+              <div className="border border-rose-200 bg-rose-50 rounded-xl p-8 text-center space-y-2">
+                <p className="text-rose-900 font-medium text-sm">Couldn't load Gmail conversations.</p>
+                <p className="text-rose-800 text-xs max-w-md mx-auto">
+                  {customer.emailMessage || "An unexpected error occurred while contacting Gmail."}
+                </p>
+                <p className="text-rose-700 text-[11px] max-w-md mx-auto">
+                  Details are in the server log (look for lines starting with [gmail]).
+                </p>
+              </div>
+            ) : !customer.emails || customer.emails.length === 0 ? (
+              <div className="border border-dashed border-slate-200 rounded-xl p-8 text-center space-y-2">
+                <p className="text-slate-600 font-medium text-sm">No emails found for this customer.</p>
+                <p className="text-slate-500 text-xs max-w-md mx-auto">
+                  Google is connected, but the connected mailbox has no recent messages to, from, or cc'ing {customer.email}.
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
