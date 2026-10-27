@@ -362,6 +362,42 @@ async function runQboSync(): Promise<QboSyncResult> {
   return { syncedCount, invoiceCount, mergedCount, linkedCalls };
 }
 
+export type QboInvoiceSummary = {
+  id: string;
+  qboUrl: string;
+  docNumber: string;
+  txnDate: string | null;
+  dueDate: string | null;
+  totalAmount: number;
+  balance: number;
+  status: "Paid" | "Open" | "Overdue";
+};
+
+/**
+ * One customer's invoice history (paid and unpaid), newest first, read live from QuickBooks.
+ * The sync only caches unpaid invoices, so this is what shows a customer's full history.
+ */
+export async function getQboCustomerInvoices(qboId: string, limit = 100): Promise<QboInvoiceSummary[]> {
+  if (!/^\d+$/.test(qboId)) throw new Error("Invalid QuickBooks customer id");
+  const invoices = await qboQueryAll("Invoice", `CustomerRef = '${qboId}' ORDERBY TxnDate DESC`);
+  const today = new Date().toISOString().slice(0, 10);
+
+  return invoices.slice(0, limit).map((inv: any) => {
+    const balance = parseFloat(inv.Balance || "0");
+    const dueDate = inv.DueDate || null;
+    return {
+      id: String(inv.Id),
+      qboUrl: `https://app.qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(String(inv.Id))}`,
+      docNumber: inv.DocNumber || String(inv.Id),
+      txnDate: inv.TxnDate || null,
+      dueDate,
+      totalAmount: parseFloat(inv.TotalAmt || "0"),
+      balance,
+      status: balance <= 0 ? "Paid" : dueDate && dueDate < today ? "Overdue" : "Open",
+    };
+  });
+}
+
 /**
  * Caches every unpaid invoice so screen-pops and the dashboard can show open balances.
  * Invoices that are no longer unpaid are removed from the cache.

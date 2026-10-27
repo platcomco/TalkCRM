@@ -67,8 +67,23 @@ export default function CustomerDetailPage() {
     }
   };
 
+  // Invoice history is read live from QuickBooks (the sync only caches unpaid invoices), so it
+  // loads separately and a slow QuickBooks doesn't hold up the rest of the page
+  const [invoiceData, setInvoiceData] = useState<{ invoices: any[]; message?: string } | null>(null);
+  const fetchInvoices = async () => {
+    try {
+      const res = await fetch(`/api/customers/${id}/invoices`);
+      const data = await res.json();
+      setInvoiceData(res.ok ? data : { invoices: [], message: data.error || "Couldn't load invoices." });
+    } catch (err: any) {
+      setInvoiceData({ invoices: [], message: `Couldn't load invoices: ${err.message}` });
+    }
+  };
+
   useEffect(() => {
     fetchCustomer();
+    setInvoiceData(null);
+    fetchInvoices();
   }, [id]);
 
   // Refresh when a call for this customer changes (or after a reconnect, when it's unknown)
@@ -264,7 +279,7 @@ export default function CustomerDetailPage() {
             }`}
           >
             <DollarSign className="w-4 h-4" />
-            <span>QuickBooks Invoices ({customer.invoices?.length || 0})</span>
+            <span>QuickBooks Invoices ({invoiceData ? invoiceData.invoices.length : "…"})</span>
           </button>
 
           <button
@@ -318,10 +333,19 @@ export default function CustomerDetailPage() {
 
         {/* Tab 1: Invoices */}
         {activeTab === "invoices" && (
-          <div className="p-6">
-            {!customer.invoices || customer.invoices.length === 0 ? (
+          <div className="p-6 space-y-3">
+            {invoiceData?.message && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {invoiceData.message}
+              </p>
+            )}
+            {!invoiceData ? (
+              <div className="text-center py-8 text-slate-500 text-sm">Loading invoices from QuickBooks...</div>
+            ) : invoiceData.invoices.length === 0 ? (
               <div className="text-center py-8 text-slate-500 text-sm">
-                No invoices found in QuickBooks for this customer.
+                {customer.qboId
+                  ? "No invoices found in QuickBooks for this customer."
+                  : "This contact isn't in QuickBooks, so it has no invoices."}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -337,13 +361,22 @@ export default function CustomerDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {customer.invoices.map((inv: any) => (
+                    {invoiceData.invoices.map((inv: any) => (
                       <tr key={inv.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-3 font-bold text-slate-900">
-                          #{inv.docNumber}
+                        <td className="py-3 px-3 font-bold">
+                          <a
+                            href={inv.qboUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-slate-900 hover:text-blue-600 inline-flex items-center gap-1"
+                            title="Open in QuickBooks"
+                          >
+                            #{inv.docNumber}
+                            <ExternalLink className="w-3 h-3 text-slate-400" />
+                          </a>
                         </td>
-                        <td className="py-3 px-3 text-slate-600">{inv.txnDate || "N/A"}</td>
-                        <td className="py-3 px-3 text-slate-600">{inv.dueDate || "N/A"}</td>
+                        <td className="py-3 px-3 text-slate-600 whitespace-nowrap">{inv.txnDate || "N/A"}</td>
+                        <td className="py-3 px-3 text-slate-600 whitespace-nowrap">{inv.dueDate || "N/A"}</td>
                         <td className="py-3 px-3 text-slate-900 font-semibold">
                           ${inv.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </td>
