@@ -10,6 +10,7 @@ export type EmailMessage = {
   to: string;
   date: string;
   snippet: string;
+  url: string; // opens the conversation in Gmail, in the right account
 };
 
 export type EmailLookupStatus = "ok" | "not_connected" | "expired" | "error";
@@ -111,6 +112,7 @@ export async function fetchCustomerEmails(
           to: header("to"),
           date: header("date"),
           snippet: msg.snippet || "",
+          url: `https://mail.google.com/mail/?authuser=${encodeURIComponent(userEmail)}#all/${msg.threadId}`,
         };
       })
     );

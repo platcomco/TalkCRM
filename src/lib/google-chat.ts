@@ -78,65 +78,192 @@ export function chatThreadUrl(threadName: string): string {
   return `https://chat.google.com/room/${spaceId}/${threadId}`;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+type MatchableCustomer = {
+  id: string;
+  name: string;
+  companyName: string | null;
+  accountNumber: string | null;
+  parentName?: string | null;
+};
+
+const STOPWORDS = new Set(["the", "of", "and", "at", "a", "an", "to", "for", "in", "on", "is", "inc", "llc", "co", "ltd"]);
+
+/** Lowercase words without punctuation, stopwords or bare numbers ("Joe's Bar-Frisco 123" → joes, bar, frisco). */
+function tokenize(text: string | null | undefined): string[] {
+  return (text || "")
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && !STOPWORDS.has(w) && !/^\d+$/.test(w));
 }
 
-type MatchableCustomer = { id: string; name: string; companyName: string | null; accountNumber: string | null };
+/** Words and numbers as one spaced string, for whole-phrase containment ("4000 NBS" → "4000 nbs"). */
+function normalizePhrase(text: string | null | undefined): string {
+  return (text || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
 
 /**
- * Finds the customer a thread is about from its first message: a DIRECTV account number
- * first, then the longest customer or company name that appears as whole words. Anything
- * ambiguous is left for a person to link.
+ * The heading of a thread: its first line, without @mentions of staff, and with a trailing
+ * group of techs ("-JAMES/SERGIO") collapsed to one word.
  */
-export function matchThreadToCustomer(title: string, customers: MatchableCustomer[]): string | null {
-  const accountNumbers = new Set(title.match(/(?<!\d)\d{8,9}(?!\d)/g) || []);
-  if (accountNumbers.size > 0) {
-    const byAccount = new Set(
-      customers.filter((c) => c.accountNumber && accountNumbers.has(c.accountNumber)).map((c) => c.id)
-    );
-    if (byAccount.size === 1) return Array.from(byAccount)[0];
-  }
+function threadHeading(title: string): string {
+  const firstLine = title.split("\n").map((l) => l.trim()).find(Boolean) || "";
+  return firstLine
+    .slice(0, 120)
+    .replace(/@[A-Z][\w.'-]*(\s+[A-Z][\w.'-]*)?/g, " ")
+    .replace(/([A-Za-z]+)(\s*\/\s*[A-Za-z]+)+\s*$/, "$1");
+}
 
-  const haystack = title.toLowerCase().replace(/\s+/g, " ");
-  let bestLength = 0;
-  let bestIds = new Set<string>();
+/**
+ * Matches the words of a heading against one customer name. A short heading word may be the
+ * initials of consecutive name words ("fw" = "fort worth"). Only the LAST heading word may be
+ * left over (the tech's name or "Done" in "Wild Pitch Frisco-JAMES"); returns null otherwise.
+ */
+function scoreLabel(heading: string[], label: string[]): { matched: number; exact: boolean } | null {
+  const labelSet = new Set(label);
+  let matched = 0;
+  for (let i = 0; i < heading.length; i++) {
+    const word = heading[i];
+    const isInitials =
+      word.length >= 2 &&
+      word.length <= 4 &&
+      label.some((_, j) => label.slice(j, j + word.length).map((w) => w[0]).join("") === word);
+    if (labelSet.has(word) || isInitials) {
+      matched++;
+    } else if (i !== heading.length - 1) {
+      return null;
+    }
+  }
+  return { matched, exact: matched === heading.length && matched === label.length };
+}
+
+/**
+ * Builds a matcher that finds the customer a thread is about from its first message:
+ *  1. a DIRECTV account number in the message;
+ *  2. the heading (e.g. "Wild Pitch Frisco-JAMES") matched word-by-word against customer and
+ *     company names; the winner must match more words than any other customer, or be the
+ *     only exact name among equals;
+ *  3. a full customer name appearing in the heading ("Hat Creek RV Park Channel Lineup").
+ * Anything ambiguous is left for a person to link.
+ */
+export function createThreadMatcher(customers: MatchableCustomer[]) {
+  const byAccount = new Map<string, string[]>();
+  const labels: { customer: MatchableCustomer; tokens: string[]; phrase: string }[] = [];
+  const labelsByWord = new Map<string, number[]>();
+
   for (const c of customers) {
-    for (const candidate of [c.name, c.companyName]) {
-      const needle = candidate?.toLowerCase().replace(/\s+/g, " ").trim();
-      if (!needle || needle.length < 5) continue; // too short to trust ("Bar", "Joe")
-      if (!new RegExp(`(^|[^a-z0-9])${escapeRegExp(needle)}([^a-z0-9]|$)`).test(haystack)) continue;
-      if (needle.length > bestLength) {
-        bestLength = needle.length;
-        bestIds = new Set([c.id]);
-      } else if (needle.length === bestLength) {
-        bestIds.add(c.id);
+    if (c.accountNumber) byAccount.set(c.accountNumber, [...(byAccount.get(c.accountNumber) || []), c.id]);
+    const seen = new Set<string>();
+    for (const text of [c.name, c.companyName]) {
+      const tokens = tokenize(text);
+      const phrase = normalizePhrase(text);
+      if (!phrase || seen.has(phrase)) continue;
+      seen.add(phrase);
+      const index = labels.push({ customer: c, tokens, phrase }) - 1;
+      for (const w of Array.from(new Set([...tokens, ...phrase.split(" ")]))) {
+        labelsByWord.set(w, [...(labelsByWord.get(w) || []), index]);
       }
     }
   }
-  return bestIds.size === 1 ? Array.from(bestIds)[0] : null;
+
+  const unique = (ids: string[]) => {
+    const set = Array.from(new Set(ids));
+    return set.length === 1 ? set[0] : null;
+  };
+
+  return (title: string): string | null => {
+    for (const number of title.match(/(?<!\d)\d{8,9}(?!\d)/g) || []) {
+      const id = unique(byAccount.get(number) || []);
+      if (id) return id;
+    }
+
+    const headingText = threadHeading(title);
+    const heading = tokenize(headingText);
+    const headingPhrase = ` ${normalizePhrase(headingText)} `;
+    const candidates = Array.from(
+      new Set(headingPhrase.trim().split(" ").flatMap((w) => labelsByWord.get(w) || []))
+    );
+
+    // 2. Word-by-word (only for heading-like first lines, not sentences)
+    if (heading.length > 0 && heading.length <= 8) {
+      const best = new Map<string, { matched: number; exact: boolean }>();
+      for (const i of candidates) {
+        const { customer, tokens } = labels[i];
+        if (!tokens.length) continue;
+        const score = scoreLabel(heading, tokens);
+        if (!score) continue;
+        const strongEnough = score.matched >= 2 || (score.matched === 1 && tokens.length === 1 && tokens[0].length >= 5);
+        if (!strongEnough) continue;
+        const prev = best.get(customer.id);
+        if (!prev || score.matched > prev.matched || (score.matched === prev.matched && score.exact)) {
+          best.set(customer.id, score);
+        }
+      }
+      const ranked = Array.from(best.entries()).sort((a, b) => b[1].matched - a[1].matched);
+      if (ranked.length > 0) {
+        const top = ranked.filter(([, s]) => s.matched === ranked[0][1].matched);
+        const winner = top.length === 1 ? top[0][0] : unique(top.filter(([, s]) => s.exact).map(([id]) => id));
+        if (winner) return winner;
+        if (top.length > 1) return null; // e.g. "Blue Goose Cantina" with several locations
+      }
+    }
+
+    // 3. A whole customer name inside the heading; the longest such name wins. In a long
+    //    sentence the name must open it ("Hat Creek RV Park Channel Lineup"), so a passing
+    //    mention ("...drop down for fitness center") doesn't count.
+    const isShortHeading = heading.length <= 6;
+    let longest = 0;
+    let ids: string[] = [];
+    for (const i of candidates) {
+      const { customer, phrase } = labels[i];
+      if (phrase.length < 6 || !phrase.includes(" ")) continue; // single words are too loose here
+      if (!headingPhrase.includes(` ${phrase} `)) continue;
+      if (!isShortHeading && !headingPhrase.startsWith(` ${phrase} `)) continue;
+      if (phrase.length > longest) {
+        longest = phrase.length;
+        ids = [customer.id];
+      } else if (phrase.length === longest) {
+        ids.push(customer.id);
+      }
+    }
+    return unique(ids);
+  };
 }
 
-/** Links threads nobody has decided on yet to the customer their first message names. */
+/** Matches one thread title (see createThreadMatcher). */
+export function matchThreadToCustomer(title: string, customers: MatchableCustomer[]): string | null {
+  return createThreadMatcher(customers)(title);
+}
+
+/**
+ * Links threads to the customer their first message names. Threads a person linked or unlinked
+ * by hand are left alone; automatic links are re-checked, since customers and the matching
+ * rules change. Returns how many threads got a new or different customer.
+ */
 export async function autoLinkChatThreads(): Promise<number> {
   const threads = await db.chatThread.findMany({
-    where: { customerId: null, linkSource: null },
-    select: { name: true, title: true },
+    where: { OR: [{ linkSource: null }, { linkSource: "auto" }] },
+    select: { name: true, title: true, customerId: true },
   });
   if (threads.length === 0) return 0;
 
-  const customers = await db.customer.findMany({
-    select: { id: true, name: true, companyName: true, accountNumber: true },
-  });
+  const match = createThreadMatcher(
+    await db.customer.findMany({
+      select: { id: true, name: true, companyName: true, accountNumber: true, parentName: true },
+    })
+  );
 
-  let linked = 0;
+  let changed = 0;
   for (const t of threads) {
-    const customerId = matchThreadToCustomer(t.title, customers);
-    if (!customerId) continue;
-    await db.chatThread.update({ where: { name: t.name }, data: { customerId, linkSource: "auto" } });
-    linked++;
+    const customerId = match(t.title);
+    if (customerId === t.customerId) continue;
+    await db.chatThread.update({
+      where: { name: t.name },
+      data: customerId ? { customerId, linkSource: "auto" } : { customerId: null, linkSource: null },
+    });
+    if (customerId) changed++;
   }
-  return linked;
+  return changed;
 }
 
 /** Copies new and recently edited messages from one space into the local cache. */

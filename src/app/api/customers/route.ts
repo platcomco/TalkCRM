@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { extractDigits } from "@/lib/phone-utils";
-import { buildNormalizedPhones, linkUnmatchedCalls } from "@/lib/customers";
+import { assignCallsFromNumber, buildNormalizedPhones, linkUnmatchedCalls } from "@/lib/customers";
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q") || "";
@@ -63,7 +63,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // The contact is usually created from a call that already happened: attach that call
+    // Created from a call ("Add Contact"): the person is saying who that caller is, so the
+    // number's calls move here even if another customer shares the number
+    if (body.claimCallsFrom) await assignCallsFromNumber(String(body.claimCallsFrom), customer.id);
+    // Calls from any of the contact's numbers that nobody had matched yet
     await linkUnmatchedCalls();
 
     return NextResponse.json(customer);
