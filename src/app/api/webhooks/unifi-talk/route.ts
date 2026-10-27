@@ -35,6 +35,13 @@ export async function POST(req: NextRequest) {
     const remoteNumber = direction === "outbound" ? dialedNumber : callerNumber;
     const localNumber = direction === "outbound" ? callerNumber : dialedNumber;
 
+    // Internal calls (extension to extension, e.g. 1001 → 1003) and feature codes (*97) aren't
+    // customer calls: skip them rather than logging an "Unknown" caller. A blocked caller ID
+    // (no digits at all) is still a real outside call and is kept.
+    if (/^[*#]?\d{1,6}$/.test(remoteNumber.trim())) {
+      return NextResponse.json({ success: true, ignored: "internal call" });
+    }
+
     const existing = await db.callLog.findUnique({ where: { callId } });
 
     let status: "ringing" | "answered" | "completed" | "missed";

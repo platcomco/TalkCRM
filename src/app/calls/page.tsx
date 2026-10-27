@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Radio, PhoneIncoming, PhoneCall, ExternalLink, Filter, Clock } from "lucide-react";
-import { formatPhoneDisplay } from "@/lib/phone-utils";
+import { formatPhoneDisplay, formatDuration, formatLine } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
 
 export default function CallsPage() {
@@ -46,7 +46,7 @@ export default function CallsPage() {
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1 rounded-xl shadow-sm self-start sm:self-auto text-xs">
+        <div className="flex flex-wrap items-center gap-1.5 bg-white border border-slate-200 p-1 rounded-xl shadow-sm self-start sm:self-auto text-xs">
           {[
             { label: "All Calls", value: "" },
             { label: "Ringing", value: "ringing" },
@@ -82,7 +82,7 @@ export default function CallsPage() {
                   <th className="py-3 px-4">Caller ID</th>
                   <th className="py-3 px-4">Matched Customer</th>
                   <th className="py-3 px-4">QBO Balance</th>
-                  <th className="py-3 px-4">Extension</th>
+                  <th className="py-3 px-4">Line</th>
                   <th className="py-3 px-4">Duration</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -91,7 +91,7 @@ export default function CallsPage() {
               <tbody className="divide-y divide-slate-100">
                 {calls.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3.5 px-4 text-slate-600">
+                    <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
                       {new Date(c.timestamp).toLocaleString()}
                     </td>
                     <td className="py-3.5 px-4 font-bold text-slate-900 font-mono">
@@ -127,9 +127,9 @@ export default function CallsPage() {
                         <span className="text-slate-300">-</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 font-mono text-slate-600">{c.toExtension || "101"}</td>
-                    <td className="py-3.5 px-4 text-slate-600">
-                      {c.duration > 0 ? `${c.duration}s` : "0s"}
+                    <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">{formatLine(c.toExtension)}</td>
+                    <td className="py-3.5 px-4 text-slate-600 whitespace-nowrap">
+                      {formatDuration(c.duration)}
                     </td>
                     <td className="py-3.5 px-4">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold ${

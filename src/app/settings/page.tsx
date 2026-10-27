@@ -15,6 +15,7 @@ import {
   Sparkles,
   AlertCircle,
 } from "lucide-react";
+import { ChatSpacesSettings } from "@/components/ChatSpacesSettings";
 
 function SettingsContent() {
   const searchParams = useSearchParams();
@@ -58,7 +59,11 @@ function SettingsContent() {
       const res = await fetch("/api/integrations/quickbooks/sync", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        setActionMessage(`QuickBooks sync complete! Synced ${data.syncedCount || 0} customers and ${data.invoiceCount || 0} open invoices.`);
+        setActionMessage(
+          `QuickBooks sync complete! Synced ${data.syncedCount || 0} customers and ${data.invoiceCount || 0} open invoices.` +
+            (data.mergedCount ? ` Merged ${data.mergedCount} TalkCRM contact(s) into their new QuickBooks record.` : "") +
+            (data.linkedCalls ? ` Linked ${data.linkedCalls} earlier call(s).` : "")
+        );
       } else {
         setActionMessage(`Sync notice: ${data.error}`);
       }
@@ -78,6 +83,21 @@ function SettingsContent() {
       const res = await fetch("/api/integrations/quickbooks/disconnect", { method: "POST" });
       const data = await res.json();
       setActionMessage(res.ok ? "QuickBooks disconnected." : `Disconnect failed: ${data.error}`);
+      fetchStatus();
+    } catch (err: any) {
+      setActionMessage(`Disconnect failed: ${err.message}`);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    if (!confirm("Disconnect your Google account? Gmail lookups stop for you, and any Chat spaces you added stop syncing until someone re-adds them.")) {
+      return;
+    }
+    setActionMessage(null);
+    try {
+      const res = await fetch("/api/integrations/google/disconnect", { method: "POST" });
+      const data = await res.json();
+      setActionMessage(res.ok ? "Google disconnected." : `Disconnect failed: ${data.error}`);
       fetchStatus();
     } catch (err: any) {
       setActionMessage(`Disconnect failed: ${err.message}`);
@@ -174,18 +194,17 @@ function SettingsContent() {
               </button>
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Replace <code>localhost</code> with your Docker host machine&apos;s LAN IP (e.g. <code>192.168.1.50</code>) so your UniFi Talk PBX can reach it over the local network.
+              UniFi Talk can also post straight to the server on the LAN (e.g. <code>http://10.30.46.200:3050/api/webhooks/unifi-talk</code>).
             </p>
           </div>
 
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-            <h3 className="font-bold text-slate-900">How to configure in UniFi Talk:</h3>
-            <ol className="list-decimal list-inside space-y-1 text-slate-600">
-              <li>Log in to your UniFi OS Console (UDM Pro / Cloud Gateway).</li>
-              <li>Open the <strong>Talk</strong> application &rarr; click <strong>Settings</strong> &rarr; <strong>System</strong> (or <strong>Integrations</strong>).</li>
-              <li>Look for <strong>Webhooks</strong> / <strong>Third-Party CRM Integration</strong>.</li>
-              <li>Paste the Webhook URL above, set method to <strong>POST</strong>, and save.</li>
-            </ol>
+            <h3 className="font-bold text-slate-900">UniFi Talk webhook settings:</h3>
+            <ul className="list-disc list-inside space-y-1 text-slate-600">
+              <li>Events: call started, answered, completed, cancelled and failed.</li>
+              <li>Authentication: <strong>Custom Header</strong> named <code>x-unifi-secret</code>, set to the server&apos;s <code>UNIFI_TALK_WEBHOOK_SECRET</code>{status?.unifiTalk?.hasSecret ? " (configured)" : " (not configured on the server!)"}.</li>
+              <li>Internal extension-to-extension calls are ignored.</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -260,19 +279,21 @@ function SettingsContent() {
         </div>
       </div>
 
-      {/* Section 3: Google Workspace (Gmail) */}
+      {/* Section 3: the signed-in person's own Google account (Gmail + Chat) */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
               <Mail className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-bold text-slate-900 text-base">Google Workspace / Gmail</h2>
-              <p className="text-xs text-slate-500">Fetches customer email conversations on demand.</p>
+              <h2 className="font-bold text-slate-900 text-base">My Google Account (Gmail & Chat)</h2>
+              <p className="text-xs text-slate-500">
+                Each person connects their own account. Customer pages then show emails from your own mailbox.
+              </p>
             </div>
           </div>
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border shrink-0 ${
             status?.google?.connected
               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
               : "bg-slate-100 text-slate-600 border-slate-200"
@@ -282,13 +303,28 @@ function SettingsContent() {
         </div>
 
         <div className="space-y-3 text-xs">
-          <div>
+          {status?.google?.signedInAs && (
+            <p className="text-slate-600">
+              Signed in as <strong>{status.google.signedInAs}</strong>
+              {status.google.connected && (
+                <>
+                  {" "}· Gmail {status.google.gmail ? "✓" : "✗"} · Chat {status.google.chat ? "✓" : "✗"}
+                </>
+              )}
+            </p>
+          )}
+          {status?.google?.connected && !(status.google.gmail && status.google.chat) && (
+            <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Some access is missing (it was unticked on Google&apos;s consent screen). Reconnect and leave every box ticked.
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
             {status?.google?.authUrl ? (
               <a
                 href={status.google.authUrl}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg inline-flex items-center gap-1.5 transition shadow-sm"
               >
-                <span>Connect Google Workspace</span>
+                <span>{status.google.connected ? "Reconnect My Google Account" : "Connect My Google Account"}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             ) : (
@@ -297,19 +333,27 @@ function SettingsContent() {
                 className="bg-slate-200 text-slate-500 font-semibold px-4 py-2 rounded-lg cursor-not-allowed"
                 title="Add GOOGLE_CLIENT_ID to .env to enable OAuth"
               >
-                Connect Google Workspace (Needs Client ID in .env)
+                Connect Google (Needs Client ID in .env)
+              </button>
+            )}
+            {status?.google?.connected && (
+              <button
+                onClick={handleDisconnectGoogle}
+                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold px-3 py-2 rounded-lg transition"
+              >
+                Disconnect
               </button>
             )}
           </div>
           <p className="text-slate-500 text-[11px]">
-            To connect Gmail, create OAuth credentials in{" "}
-            <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">
-              Google Cloud Console
-            </a>
-            , set Redirect URI to <code>{status?.google?.redirectUri || "(loading...)"}</code> exactly, and add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to your <code>.env</code> file.
+            Google Cloud setup: OAuth redirect URI <code>{status?.google?.redirectUri || "(loading...)"}</code>; Gmail API and
+            Google Chat API enabled; Chat API &rarr; Configuration filled in.
           </p>
         </div>
       </div>
+
+      {/* Section 4: Google Chat spaces with site-visit threads */}
+      <ChatSpacesSettings chatConnected={!!status?.google?.chat} autoSync={!!status?.autoSync} />
 
       {/* Section 4: Demo Data & Testing Sandbox (only when ENABLE_DEMO_DATA=true) */}
       {status?.demoDataEnabled && (

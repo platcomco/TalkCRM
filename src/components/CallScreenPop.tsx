@@ -8,6 +8,7 @@ import { notifyCallsChanged } from "@/lib/live-calls";
 import { CustomerTags } from "@/components/CustomerTags";
 import { usePathname } from "next/navigation";
 import { isPublicPage } from "@/lib/public-pages";
+import { formatLine } from "@/lib/phone-utils";
 
 export function CallScreenPop() {
   const [activeCall, setActiveCall] = useState<CallPayload | null>(null);
@@ -164,7 +165,7 @@ export function CallScreenPop() {
   const isRinging = activeCall.status === "ringing";
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 w-full max-w-md animate-in slide-in-from-bottom-5 duration-300">
+    <div className="fixed bottom-20 md:bottom-5 inset-x-3 md:inset-x-auto md:right-5 z-50 md:w-full md:max-w-md animate-in slide-in-from-bottom-5 duration-300">
       <div className="bg-white rounded-2xl shadow-2xl border-2 border-blue-500 overflow-hidden ring-4 ring-blue-500/10">
         {/* Header Bar */}
         <div className={`px-4 py-3 flex items-center justify-between text-white ${isRinging ? "bg-blue-600 animate-pulse-ring" : "bg-slate-800"}`}>
@@ -183,7 +184,7 @@ export function CallScreenPop() {
           </div>
           <div className="flex items-center space-x-2">
             <span className="text-[11px] bg-white/20 px-2 py-0.5 rounded-full font-mono">
-              Ext: {activeCall.toExtension || "101"}
+              {formatLine(activeCall.toExtension)}
             </span>
             <button
               onClick={() => setActiveCall(null)}

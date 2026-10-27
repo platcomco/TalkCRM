@@ -1,91 +1,6 @@
-import { db } from "./db";
+import { getGoogleClient, GoogleAuthError, hasScopes, GMAIL_SCOPE } from "./google";
 
-const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-
-export async function getGoogleConnection() {
-  return await db.integration.findUnique({
-    where: { provider: "google" },
-  });
-}
-
-export const GOOGLE_STATE_COOKIE = "talkcrm_google_state";
-
-/**
- * URL the Settings page links to. It goes through our own connect route, which sets a
- * random OAuth state cookie before redirecting to Google.
- */
-export function getGoogleAuthUrl(): string {
-  if (!process.env.GOOGLE_CLIENT_ID) return "";
-  return "/api/auth/google/connect";
-}
-
-export function buildGoogleAuthorizeUrl(state: string): string {
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/google/callback`;
-  const scope = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/userinfo.email",
-  ].join(" ");
-
-  const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID || "",
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope,
-    access_type: "offline",
-    prompt: "consent",
-    state,
-  });
-
-  return `${GOOGLE_AUTH_URL}?${params.toString()}`;
-}
-
-export async function exchangeGoogleToken(code: string) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/google/callback`;
-
-  if (!clientId || !clientSecret) {
-    throw new Error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET in environment.");
-  }
-
-  const response = await fetch(GOOGLE_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    }).toString(),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Google token exchange error: ${errorText}`);
-  }
-
-  const data = await response.json();
-  const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000);
-
-  return await db.integration.upsert({
-    where: { provider: "google" },
-    update: {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token || undefined,
-      tokenExpiresAt: expiresAt,
-      metadata: JSON.stringify({ connectedAt: new Date().toISOString() }),
-    },
-    create: {
-      provider: "google",
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token || null,
-      tokenExpiresAt: expiresAt,
-      metadata: JSON.stringify({ connectedAt: new Date().toISOString() }),
-    },
-  });
-}
+const GMAIL_API_URL = "https://gmail.googleapis.com/gmail/v1";
 
 export type EmailMessage = {
   id: string;
@@ -97,61 +12,122 @@ export type EmailMessage = {
   snippet: string;
 };
 
-export async function fetchCustomerEmailThreads(email: string): Promise<EmailMessage[]> {
-  if (!email) return [];
+export type EmailLookupStatus = "ok" | "not_connected" | "expired" | "error";
 
-  const connection = await getGoogleConnection();
-  if (!connection || !connection.accessToken) {
-    return [];
+export type EmailLookupResult = {
+  emails: EmailMessage[];
+  status: EmailLookupStatus;
+  message?: string;
+};
+
+const EMAIL_PATTERN = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+/**
+ * QuickBooks can hold several addresses in one field ("a@x.com, b@x.com") or include display
+ * names ("Bob <b@x.com>"). Pulls out each valid address so the Gmail query is well-formed.
+ */
+function parseEmailAddresses(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const parts = raw
+    .replace(/[<>"]/g, " ")
+    .split(/[,;\s]+/)
+    .map((p) => p.trim().toLowerCase())
+    .filter((p) => EMAIL_PATTERN.test(p));
+  return Array.from(new Set(parts)).slice(0, 5);
+}
+
+function describeGmailFailure(status: number): string {
+  if (status === 403) {
+    return "Gmail refused access (HTTP 403). Check that the Gmail API is enabled in Google Cloud and that the gmail.readonly permission was granted; reconnecting Google in Settings may fix it.";
   }
+  if (status === 429) {
+    return "Gmail rate limit reached (HTTP 429). Try again in a minute.";
+  }
+  return `Gmail request failed (HTTP ${status}). See the server log for details.`;
+}
+
+/**
+ * Looks up recent messages to/from/cc the customer in the signed-in staff member's own mailbox,
+ * and reports WHY there are none when that happens (not connected, expired, or an error).
+ * Never throws.
+ */
+export async function fetchCustomerEmails(
+  customerEmail: string | null | undefined,
+  userEmail: string | null | undefined
+): Promise<EmailLookupResult> {
+  const addresses = parseEmailAddresses(customerEmail);
+  if (addresses.length === 0) {
+    if (customerEmail) {
+      console.warn(`[gmail] no valid email address found in customer email field: "${customerEmail}"`);
+      return {
+        emails: [],
+        status: "error",
+        message: `Could not find a valid email address in "${customerEmail}".`,
+      };
+    }
+    return { emails: [], status: "ok" };
+  }
+  if (!userEmail) return { emails: [], status: "not_connected" };
 
   try {
-    const q = encodeURIComponent(`from:${email} OR to:${email}`);
-    const listRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=10`,
-      {
-        headers: { Authorization: `Bearer ${connection.accessToken}` },
-      }
-    );
+    const google = await getGoogleClient(userEmail);
+    if (!google || !hasScopes(google.account, [GMAIL_SCOPE])) return { emails: [], status: "not_connected" };
+
+    const query = addresses.map((a) => `(from:${a} OR to:${a} OR cc:${a})`).join(" OR ");
+    const listParams = new URLSearchParams({ q: query, maxResults: "8" });
+    const listRes = await google.get(`${GMAIL_API_URL}/users/me/messages?${listParams.toString()}`);
 
     if (!listRes.ok) {
-      return [];
+      const body = (await listRes.text().catch(() => "")).slice(0, 500);
+      console.error(`[gmail] messages.list failed: HTTP ${listRes.status} ${body}`);
+      return { emails: [], status: "error", message: describeGmailFailure(listRes.status) };
     }
 
     const listData = await listRes.json();
-    const messages = listData.messages || [];
+    const items: { id: string }[] = listData.messages || [];
 
-    const results: EmailMessage[] = [];
-    for (const item of messages.slice(0, 8)) {
-      const msgRes = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`,
-        {
-          headers: { Authorization: `Bearer ${connection.accessToken}` },
+    const fetched = await Promise.all(
+      items.map(async (item): Promise<EmailMessage | null> => {
+        const metaParams = new URLSearchParams({ format: "metadata" });
+        for (const h of ["Subject", "From", "To", "Date"]) metaParams.append("metadataHeaders", h);
+
+        const msgRes = await google.get(`${GMAIL_API_URL}/users/me/messages/${item.id}?${metaParams.toString()}`);
+        if (!msgRes.ok) {
+          const body = (await msgRes.text().catch(() => "")).slice(0, 300);
+          console.error(`[gmail] messages.get ${item.id} failed: HTTP ${msgRes.status} ${body}`);
+          return null;
         }
-      );
-      if (msgRes.ok) {
-        const msg = await msgRes.json();
-        const headers = msg.payload?.headers || [];
-        const subject = headers.find((h: any) => h.name.toLowerCase() === "subject")?.value || "No Subject";
-        const from = headers.find((h: any) => h.name.toLowerCase() === "from")?.value || "";
-        const to = headers.find((h: any) => h.name.toLowerCase() === "to")?.value || "";
-        const date = headers.find((h: any) => h.name.toLowerCase() === "date")?.value || "";
 
-        results.push({
+        const msg = await msgRes.json();
+        const headers: { name?: string; value?: string }[] = msg.payload?.headers || [];
+        const header = (name: string) =>
+          headers.find((h) => h.name?.toLowerCase() === name)?.value || "";
+
+        return {
           id: msg.id,
           threadId: msg.threadId,
-          subject,
-          from,
-          to,
-          date,
+          subject: header("subject") || "No Subject",
+          from: header("from"),
+          to: header("to"),
+          date: header("date"),
           snippet: msg.snippet || "",
-        });
-      }
-    }
+        };
+      })
+    );
 
-    return results;
-  } catch (err) {
-    console.error("Error fetching emails for customer:", err);
-    return [];
+    return {
+      emails: fetched.filter((m): m is EmailMessage => m !== null),
+      status: "ok",
+    };
+  } catch (err: any) {
+    if (err instanceof GoogleAuthError) {
+      return { emails: [], status: "expired", message: err.message };
+    }
+    console.error("[gmail] error fetching emails for customer:", err);
+    return {
+      emails: [],
+      status: "error",
+      message: err?.message || "Unexpected error while contacting Gmail.",
+    };
   }
 }

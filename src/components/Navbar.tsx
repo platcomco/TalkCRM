@@ -45,6 +45,26 @@ export function Navbar() {
   ];
 
   return (
+    <>
+    {/* Phone navigation: the header's nav links are hidden below md, so pages are reached from this bar */}
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 shadow-[0_-1px_3px_rgba(0,0,0,0.05)] grid grid-cols-4 pb-[env(safe-area-inset-bottom)]">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium ${
+              isActive ? "text-blue-700" : "text-slate-500"
+            }`}
+          >
+            <Icon className="w-5 h-5" />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
@@ -62,7 +82,7 @@ export function Navbar() {
             <nav className="hidden md:flex space-x-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href;
+                const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                 return (
                   <Link
                     key={item.href}
@@ -124,5 +144,6 @@ export function Navbar() {
         </div>
       </div>
     </header>
+    </>
   );
 }

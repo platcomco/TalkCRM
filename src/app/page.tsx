@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { formatPhoneDisplay } from "@/lib/phone-utils";
+import { formatPhoneDisplay, formatDuration } from "@/lib/phone-utils";
 import { PhoneCall, Users, DollarSign, Clock, AlertTriangle, ArrowRight, PhoneIncoming, ShieldCheck, ExternalLink, FileText } from "lucide-react";
 import { LiveRefresh } from "@/components/LiveRefresh";
 
@@ -132,14 +132,14 @@ export default async function DashboardPage() {
           <div className="divide-y divide-slate-100">
             {calls.length === 0 ? (
               <div className="p-8 text-center text-slate-500 text-sm">
-                No calls recorded yet. Click &quot;Test Call Pop&quot; in the header to trigger a simulation!
+                No calls recorded yet. Calls appear here as they come in from UniFi Talk.
               </div>
             ) : (
               calls.map((call) => {
                 const isOverdue = (call.customer?.qboBalance || 0) > 0;
                 return (
-                  <div key={call.id} className="p-4 hover:bg-slate-50 transition flex items-center justify-between">
-                    <div className="flex items-start gap-3">
+                  <div key={call.id} className="p-4 hover:bg-slate-50 transition flex items-center justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 mt-0.5">
                         <PhoneCall className="w-5 h-5 text-blue-600" />
                       </div>
@@ -170,18 +170,22 @@ export default async function DashboardPage() {
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500 mt-1">
                           <span>{formatPhoneDisplay(call.fromNumber)}</span>
-                          <span>•</span>
                           {call.customer?.companyName && (
                             <>
-                              <span>{call.customer.companyName}</span>
                               <span>•</span>
+                              <span>{call.customer.companyName}</span>
                             </>
                           )}
-                          <span>Ext: {call.toExtension || "101"}</span>
                           <span>•</span>
-                          <span>{call.duration > 0 ? `${call.duration}s` : "0s"}</span>
+                          <span>{new Date(call.timestamp).toLocaleString("en-US", { timeZone: process.env.TZ || "America/Chicago", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                          {call.duration > 0 && (
+                            <>
+                              <span>•</span>
+                              <span>{formatDuration(call.duration)}</span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -260,26 +264,6 @@ export default async function DashboardPage() {
                 ))
               )}
             </div>
-          </div>
-
-          {/* UniFi Talk Webhook URL Quick Card */}
-          <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-blue-400">PBX Webhook Setup</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono">Listening</span>
-            </div>
-            <p className="text-xs text-slate-300">
-              In UniFi OS Talk settings, configure your Outbound Webhook to point to:
-            </p>
-            <div className="bg-slate-800 p-2.5 rounded-lg font-mono text-[11px] text-blue-300 break-all select-all border border-slate-700">
-              http://&lt;LOCAL-IP&gt;:3000/api/webhooks/unifi-talk
-            </div>
-            <Link
-              href="/settings"
-              className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 block"
-            >
-              <span>Setup Guide & Token &rarr;</span>
-            </Link>
           </div>
         </div>
       </div>

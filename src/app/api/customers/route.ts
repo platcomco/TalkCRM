@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { normalizePhoneNumber, extractDigits } from "@/lib/phone-utils";
+import { extractDigits } from "@/lib/phone-utils";
+import { buildNormalizedPhones, linkUnmatchedCalls } from "@/lib/customers";
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q") || "";
@@ -50,23 +51,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Customer name is required" }, { status: 400 });
     }
 
-    const phoneDigits = [extractDigits(primaryPhone || ""), extractDigits(mobilePhone || "")].filter(Boolean);
-    const normalizedList = [
-      ...phoneDigits,
-      ...phoneDigits.map((d) => normalizePhoneNumber(d)),
-    ].join(",");
-
     const customer = await db.customer.create({
       data: {
-        name,
+        name: String(name).trim(),
         companyName: companyName || null,
         primaryPhone: primaryPhone || null,
         mobilePhone: mobilePhone || null,
-        normalizedPhones: normalizedList,
+        normalizedPhones: buildNormalizedPhones(primaryPhone, mobilePhone),
         email: email || null,
         billingAddress: billingAddress || null,
       },
     });
+
+    // The contact is usually created from a call that already happened: attach that call
+    await linkUnmatchedCalls();
 
     return NextResponse.json(customer);
   } catch (err: any) {

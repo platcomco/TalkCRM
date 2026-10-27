@@ -21,10 +21,24 @@ import {
   Inbox,
   Send,
   MessageSquare,
+  MessagesSquare,
+  Pencil,
 } from "lucide-react";
-import { formatPhoneDisplay } from "@/lib/phone-utils";
+import { formatPhoneDisplay, formatDuration, formatLine } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
 import { CustomerTags } from "@/components/CustomerTags";
+import { EditCustomerModal } from "@/components/EditCustomerModal";
+import { ChatThreadsPanel } from "@/components/ChatThreadsPanel";
+
+// Gmail snippets arrive HTML-escaped ("don&#39;t")
+function decodeEntities(text: string): string {
+  return (text || "")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -33,7 +47,8 @@ export default function CustomerDetailPage() {
 
   const [customer, setCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"invoices" | "emails" | "calls" | "notes">("invoices");
+  const [activeTab, setActiveTab] = useState<"invoices" | "emails" | "chat" | "calls" | "notes">("invoices");
+  const [showEdit, setShowEdit] = useState(false);
 
   // Note form state
   const [newNote, setNewNote] = useState("");
@@ -104,9 +119,23 @@ export default function CustomerDetailPage() {
 
   const qboBalance = customer.qboBalance || 0;
   const isOverdue = qboBalance > 0;
+  // "ok" | "not_connected" | "expired" | "error" (older API responses have no status)
+  const emailStatus: string = customer.emailStatus || "ok";
 
   return (
     <div className="space-y-6">
+      {showEdit && (
+        <EditCustomerModal
+          customer={customer}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            setShowEdit(false);
+            fetchCustomer();
+          }}
+          onDeleted={() => router.push("/customers")}
+        />
+      )}
+
       {/* Back button */}
       <div>
         <Link
@@ -122,15 +151,34 @@ export default function CustomerDetailPage() {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
           <div className="space-y-1">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
                 <User className="w-6 h-6 text-blue-600" />
                 {customer.name}
               </h1>
-              {customer.qboId && (
-                <span className="text-[11px] font-mono bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-semibold border border-blue-200">
+              {customer.qboId ? (
+                <span
+                  className="text-[11px] font-mono bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-semibold border border-blue-200"
+                  title="Synced from QuickBooks. Edit this customer in QuickBooks; changes appear after the next sync."
+                >
                   QBO: {customer.qboId}
                 </span>
+              ) : (
+                <>
+                  <span
+                    className="text-[11px] bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-semibold border border-slate-200"
+                    title="Added in TalkCRM. If this person is later added in QuickBooks with the same phone or email, the next sync merges them."
+                  >
+                    TalkCRM contact
+                  </span>
+                  <button
+                    onClick={() => setShowEdit(true)}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg flex items-center gap-1 transition"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>Edit</span>
+                  </button>
+                </>
               )}
             </div>
 
@@ -158,7 +206,11 @@ export default function CustomerDetailPage() {
               </span>
             </div>
             <a
-              href="https://app.qbo.intuit.com"
+              href={
+                customer.qboId
+                  ? `https://app.qbo.intuit.com/app/customerdetail?nameId=${encodeURIComponent(customer.qboId)}`
+                  : "https://app.qbo.intuit.com"
+              }
               target="_blank"
               rel="noreferrer"
               className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition shadow-sm"
@@ -202,7 +254,7 @@ export default function CustomerDetailPage() {
 
       {/* Tabs Bar */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+        <div className="flex overflow-x-auto whitespace-nowrap border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
           <button
             onClick={() => setActiveTab("invoices")}
             className={`flex items-center gap-2 py-3 px-5 border-b-2 transition ${
@@ -225,6 +277,18 @@ export default function CustomerDetailPage() {
           >
             <Inbox className="w-4 h-4" />
             <span>Gmail Conversations</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`flex items-center gap-2 py-3 px-5 border-b-2 transition ${
+              activeTab === "chat"
+                ? "border-blue-600 text-blue-700 bg-white"
+                : "border-transparent hover:text-slate-900"
+            }`}
+          >
+            <MessagesSquare className="w-4 h-4" />
+            <span>Site Visits ({customer.chatThreads?.length || 0})</span>
           </button>
 
           <button
@@ -323,18 +387,48 @@ export default function CustomerDetailPage() {
               <div className="text-center py-8 text-slate-500 text-sm">
                 Add an email address to this customer to enable Gmail thread lookup.
               </div>
-            ) : !customer.emails || customer.emails.length === 0 ? (
+            ) : emailStatus === "not_connected" ? (
               <div className="border border-dashed border-slate-200 rounded-xl p-8 text-center space-y-2">
-                <p className="text-slate-600 font-medium text-sm">No live Google Workspace account connected yet.</p>
+                <p className="text-slate-600 font-medium text-sm">You haven't connected your Google account yet.</p>
                 <p className="text-slate-500 text-xs max-w-md mx-auto">
-                  To view live email threads, connect your Google Workspace account in Settings.
+                  Each person connects their own Gmail once in Settings; TalkCRM then shows this customer's emails from your mailbox.
                 </p>
                 <Link
                   href="/settings"
                   className="inline-block mt-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition"
                 >
-                  Configure Google Integration
+                  Connect My Google Account
                 </Link>
+              </div>
+            ) : emailStatus === "expired" ? (
+              <div className="border border-amber-200 bg-amber-50 rounded-xl p-8 text-center space-y-2">
+                <p className="text-amber-900 font-medium text-sm">Google connection expired.</p>
+                <p className="text-amber-800 text-xs max-w-md mx-auto">
+                  {customer.emailMessage || "Google authorization expired or was revoked."} Reconnect in Settings to resume Gmail lookups.
+                </p>
+                <Link
+                  href="/settings"
+                  className="inline-block mt-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition"
+                >
+                  Reconnect Google
+                </Link>
+              </div>
+            ) : emailStatus === "error" ? (
+              <div className="border border-rose-200 bg-rose-50 rounded-xl p-8 text-center space-y-2">
+                <p className="text-rose-900 font-medium text-sm">Couldn't load Gmail conversations.</p>
+                <p className="text-rose-800 text-xs max-w-md mx-auto">
+                  {customer.emailMessage || "An unexpected error occurred while contacting Gmail."}
+                </p>
+                <p className="text-rose-700 text-[11px] max-w-md mx-auto">
+                  Details are in the server log (look for lines starting with [gmail]).
+                </p>
+              </div>
+            ) : !customer.emails || customer.emails.length === 0 ? (
+              <div className="border border-dashed border-slate-200 rounded-xl p-8 text-center space-y-2">
+                <p className="text-slate-600 font-medium text-sm">No emails found for this customer.</p>
+                <p className="text-slate-500 text-xs max-w-md mx-auto">
+                  Google is connected, but the connected mailbox has no recent messages to, from, or cc'ing {customer.email}.
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -348,7 +442,7 @@ export default function CustomerDetailPage() {
                       <span className="font-medium">From:</span> {email.from}
                     </div>
                     <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                      {email.snippet}
+                      {decodeEntities(email.snippet)}
                     </p>
                   </div>
                 ))}
@@ -356,6 +450,9 @@ export default function CustomerDetailPage() {
             )}
           </div>
         )}
+
+        {/* Google Chat site-visit threads */}
+        {activeTab === "chat" && <ChatThreadsPanel customer={customer} onChanged={fetchCustomer} />}
 
         {/* Tab 3: UniFi Talk Calls */}
         {activeTab === "calls" && (
@@ -371,7 +468,7 @@ export default function CustomerDetailPage() {
                     <tr>
                       <th className="py-2.5 px-3">Date & Time</th>
                       <th className="py-2.5 px-3">From Number</th>
-                      <th className="py-2.5 px-3">PBX Ext</th>
+                      <th className="py-2.5 px-3">Line</th>
                       <th className="py-2.5 px-3">Direction</th>
                       <th className="py-2.5 px-3">Duration</th>
                       <th className="py-2.5 px-3">Status</th>
@@ -386,9 +483,9 @@ export default function CustomerDetailPage() {
                         <td className="py-3 px-3 font-semibold text-slate-900">
                           {formatPhoneDisplay(c.fromNumber)}
                         </td>
-                        <td className="py-3 px-3 font-mono">{c.toExtension || "101"}</td>
+                        <td className="py-3 px-3 whitespace-nowrap">{formatLine(c.toExtension)}</td>
                         <td className="py-3 px-3 capitalize">{c.direction}</td>
-                        <td className="py-3 px-3">{c.duration > 0 ? `${c.duration}s` : "0s"}</td>
+                        <td className="py-3 px-3">{formatDuration(c.duration)}</td>
                         <td className="py-3 px-3">
                           <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-semibold ${
                             c.status === "completed" ? "bg-slate-100 text-slate-700" : c.status === "missed" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-800"
