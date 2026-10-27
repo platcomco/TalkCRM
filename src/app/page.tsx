@@ -6,8 +6,11 @@ import { LiveRefresh } from "@/components/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 
+const kpiCardClass =
+  "bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-blue-300 hover:shadow-md transition";
+
 export default async function DashboardPage() {
-  const [customerCount, callCount, calls, openInvoices] = await Promise.all([
+  const [customerCount, callCount, calls, openInvoices, qbo] = await Promise.all([
     db.customer.count(),
     db.callLog.count(),
     db.callLog.findMany({
@@ -21,8 +24,20 @@ export default async function DashboardPage() {
     db.invoiceCache.findMany({
       where: { status: { in: ["Open", "Overdue"] } },
       include: { customer: true },
+      // Overdue first, then the soonest due date
+      orderBy: [{ status: "desc" }, { dueDate: "asc" }],
     }),
+    db.integration.findUnique({ where: { provider: "quickbooks" }, select: { lastSyncedAt: true } }),
   ]);
+  const lastSync = qbo?.lastSyncedAt
+    ? qbo.lastSyncedAt.toLocaleString("en-US", {
+        timeZone: process.env.TZ || "America/Chicago",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
 
   const totalOutstanding = openInvoices.reduce((acc, inv) => acc + (inv.balance || 0), 0);
   const overdueCount = openInvoices.filter((inv) => inv.status === "Overdue").length;
@@ -61,19 +76,21 @@ export default async function DashboardPage() {
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Customers */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <Link href="/customers" className={kpiCardClass}>
           <div>
-            <p className="text-xs font-medium text-slate-500">Synced Customers</p>
+            <p className="text-xs font-medium text-slate-500">Customers</p>
             <p className="text-2xl font-bold text-slate-900 mt-1">{customerCount}</p>
-            <p className="text-[11px] text-blue-600 font-medium mt-1">QuickBooks Online</p>
+            <p className="text-[11px] text-blue-600 font-medium mt-1">
+              {lastSync ? `QuickBooks synced ${lastSync}` : "QuickBooks not synced yet"}
+            </p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
             <Users className="w-6 h-6" />
           </div>
-        </div>
+        </Link>
 
         {/* Total Calls Logged */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <Link href="/calls" className={kpiCardClass}>
           <div>
             <p className="text-xs font-medium text-slate-500">Total Calls Logged</p>
             <p className="text-2xl font-bold text-slate-900 mt-1">{callCount}</p>
@@ -82,10 +99,10 @@ export default async function DashboardPage() {
           <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <PhoneCall className="w-6 h-6" />
           </div>
-        </div>
+        </Link>
 
         {/* Outstanding Balance */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <Link href="/invoices" className={kpiCardClass}>
           <div>
             <p className="text-xs font-medium text-slate-500">Open QBO Receivables</p>
             <p className="text-2xl font-bold text-slate-900 mt-1">
@@ -96,19 +113,21 @@ export default async function DashboardPage() {
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
             <DollarSign className="w-6 h-6" />
           </div>
-        </div>
+        </Link>
 
         {/* Overdue Alerts */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <Link href="/invoices?status=overdue" className={kpiCardClass}>
           <div>
             <p className="text-xs font-medium text-slate-500">Overdue Invoices</p>
             <p className="text-2xl font-bold text-rose-600 mt-1">{overdueCount}</p>
-            <p className="text-[11px] text-rose-600 font-medium mt-1">Action required</p>
+            <p className="text-[11px] text-rose-600 font-medium mt-1">
+              {overdueCount > 0 ? "Action required" : "Nothing overdue"}
+            </p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
             <AlertTriangle className="w-6 h-6" />
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Main Grid: Recent Calls & Quick Actions */}
@@ -233,6 +252,13 @@ export default async function DashboardPage() {
                 <DollarSign className="w-4 h-4 text-amber-600" />
                 <span>Open QuickBooks Invoices</span>
               </h2>
+              <Link
+                href="/invoices"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <span>View All</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
             <div className="divide-y divide-slate-100">
               {openInvoices.length === 0 ? (
@@ -241,7 +267,11 @@ export default async function DashboardPage() {
                 </div>
               ) : (
                 openInvoices.slice(0, 5).map((inv) => (
-                  <div key={inv.id} className="p-3.5 hover:bg-slate-50 transition flex items-center justify-between text-xs">
+                  <Link
+                    key={inv.id}
+                    href={`/customers/${inv.customer.id}`}
+                    className="p-3.5 hover:bg-slate-50 transition flex items-center justify-between text-xs"
+                  >
                     <div>
                       <div className="font-semibold text-slate-900">
                         {inv.customer.name}
@@ -260,7 +290,7 @@ export default async function DashboardPage() {
                         {inv.status}
                       </span>
                     </div>
-                  </div>
+                  </Link>
                 ))
               )}
             </div>

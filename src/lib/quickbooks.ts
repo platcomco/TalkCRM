@@ -357,6 +357,8 @@ async function runQboSync(): Promise<QboSyncResult> {
   const invoiceCount = await syncQboOpenInvoices();
   const linkedCalls = await linkUnmatchedCalls();
 
+  await db.integration.update({ where: { provider: "quickbooks" }, data: { lastSyncedAt: new Date() } });
+
   return { syncedCount, invoiceCount, mergedCount, linkedCalls };
 }
 
