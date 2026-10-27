@@ -156,7 +156,8 @@ function CustomersContent() {
       const res = await fetch("/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newCustomer),
+        // Opened from a call's "Add Contact": that caller's calls belong to this contact
+        body: JSON.stringify({ ...newCustomer, claimCallsFrom: initialNewPhone || undefined }),
       });
       if (res.ok) {
         // Open the new contact: any earlier calls from its number are linked to it now

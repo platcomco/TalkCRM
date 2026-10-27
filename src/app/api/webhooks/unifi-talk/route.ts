@@ -81,7 +81,8 @@ export async function POST(req: NextRequest) {
 
     // Lookup customer in database by normalized phone or digits. Several accounts can share a
     // number (e.g. QuickBooks sub-clients of one parent): keep the customer already linked to this
-    // call, otherwise prefer a top-level account, and report how many others share the number.
+    // call, then the customer this number's last call went to, then a top-level account, and
+    // report how many others share the number.
     let customer: any = null;
     let otherMatches = 0;
     if (matchDigits.length >= 7) {
@@ -102,8 +103,20 @@ export async function POST(req: NextRequest) {
         take: 50,
       });
 
+      // Whoever this number's previous call was linked to (e.g. a contact someone created for
+      // this caller) is the best guess when the number is shared
+      const previousCall =
+        candidates.length > 1
+          ? await db.callLog.findFirst({
+              where: { normalizedFrom: { endsWith: matchDigits }, customerId: { in: candidates.map((c) => c.id) } },
+              orderBy: { timestamp: "desc" },
+              select: { customerId: true },
+            })
+          : null;
+
       customer =
         candidates.find((c) => c.id === existing?.customerId) ||
+        candidates.find((c) => c.id === previousCall?.customerId) ||
         candidates.find((c) => !c.parentName) ||
         candidates[0] ||
         null;

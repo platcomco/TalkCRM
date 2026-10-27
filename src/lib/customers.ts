@@ -16,6 +16,20 @@ export function phoneMatchKeys(...phones: (string | null | undefined)[]): string
 }
 
 /**
+ * Moves every call from this phone number to the customer, even calls that were matched to
+ * another customer sharing the number. Used when someone creates a contact for a caller.
+ */
+export async function assignCallsFromNumber(phone: string, customerId: string): Promise<number> {
+  const [key] = phoneMatchKeys(phone);
+  if (!key) return 0;
+  const result = await db.callLog.updateMany({
+    where: { normalizedFrom: { endsWith: key } },
+    data: { customerId },
+  });
+  return result.count;
+}
+
+/**
  * Attaches calls that came in before anyone knew who the caller was (e.g. a contact added
  * after the call) to the customer whose phone now matches. Returns how many calls were linked.
  */
