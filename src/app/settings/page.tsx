@@ -269,6 +269,15 @@ function SettingsContent() {
             )}
           </div>
 
+          {status?.quickbooks?.connected && (
+            <p className="text-slate-600">
+              Last synced:{" "}
+              <strong>
+                {status.quickbooks.lastSyncedAt ? new Date(status.quickbooks.lastSyncedAt).toLocaleString() : "never"}
+              </strong>
+              {status?.autoSync && " · syncs automatically every 30 minutes, Mon–Sat 7am–7pm"}
+            </p>
+          )}
           <p className="text-slate-500 text-[11px]">
             To connect your live QuickBooks Online account, create an app at{" "}
             <a href="https://developer.intuit.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">

@@ -93,6 +93,7 @@ model Integration {
   tokenExpiresAt DateTime?
   realmId        String?   // QBO Company/Realm ID
   metadata       String?   // JSON object for additional flags
+  lastSyncedAt   DateTime? // when the last successful sync finished
   updatedAt      DateTime  @updatedAt
 }
 

@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     quickbooks: {
       connected: !!qbo?.accessToken,
       realmId: qbo?.realmId || null,
+      lastSyncedAt: qbo?.lastSyncedAt || null,
       authUrl: getQboAuthUrl(),
       configuredInEnv: !!process.env.QBO_CLIENT_ID,
       redirectUri: `${appUrl}/api/auth/quickbooks/callback`,
