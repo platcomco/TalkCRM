@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { fetchCustomerEmails, type EmailLookupStatus } from "@/lib/gmail";
+import { fetchCustomerEmails } from "@/lib/gmail";
 
 export async function GET(
   req: NextRequest,
@@ -30,10 +30,10 @@ export async function GET(
       return NextResponse.json({ error: "Customer not found" }, { status: 404 });
     }
 
-    // Fetch emails if email exists. fetchCustomerEmails never throws; it reports why a
-    // lookup came back empty (not connected / expired / error) via emailStatus.
+    // Fetch emails if email exists. fetchCustomerEmails never throws; it reports a status
+    // (ok / not_connected / expired / error) so the UI can explain an empty list.
     let emails: any[] = [];
-    let emailStatus: EmailLookupStatus = "ok";
+    let emailStatus: string = "ok";
     let emailMessage: string | undefined;
     if (customer.email) {
       const result = await fetchCustomerEmails(customer.email);
