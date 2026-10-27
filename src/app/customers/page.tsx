@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Users, Search, Plus, Phone, Mail, Building2, ExternalLink, DollarSign, X, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { formatPhoneDisplay, extractDigits } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
@@ -80,6 +80,7 @@ function SortHeader({
 
 function CustomersContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialQuery = searchParams.get("q") || "";
   const initialNewPhone = searchParams.get("newPhone") || "";
 
@@ -158,6 +159,9 @@ function CustomersContent() {
         body: JSON.stringify(newCustomer),
       });
       if (res.ok) {
+        // Open the new contact: any earlier calls from its number are linked to it now
+        const created = await res.json();
+        router.push(`/customers/${created.id}`);
         setShowAddModal(false);
         setNewCustomer({
           name: "",

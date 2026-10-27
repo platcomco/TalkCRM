@@ -28,6 +28,7 @@ model Customer {
   calls            CallLog[]
   invoices         InvoiceCache[]
   notes            Note[]
+  chatThreads      ChatThread[]
 
   @@index([email])
 }
@@ -86,11 +87,65 @@ model InvoiceCache {
 
 model Integration {
   id             String    @id @default(cuid())
-  provider       String    @unique // quickbooks, google
+  provider       String    @unique // quickbooks
   accessToken    String?
   refreshToken   String?
   tokenExpiresAt DateTime?
   realmId        String?   // QBO Company/Realm ID
   metadata       String?   // JSON object for additional flags
   updatedAt      DateTime  @updatedAt
+}
+
+// Each staff member's own Google authorization (Gmail lookup and Chat reading), keyed by
+// their sign-in email
+model GoogleAccount {
+  email          String    @id
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  scopes         String    @default("") // space-separated scopes Google granted
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// A Google Chat space whose threads hold per-customer site-visit notes
+model ChatSpace {
+  name         String       @id // spaces/AAAA...
+  displayName  String
+  syncAsEmail  String       // whose Google connection reads the space (must be a member)
+  lastSyncedAt DateTime?
+  lastError    String?
+  createdAt    DateTime     @default(now())
+
+  threads      ChatThread[]
+}
+
+model ChatThread {
+  name          String        @id // spaces/AAAA/threads/BBBB
+  spaceName     String
+  space         ChatSpace     @relation(fields: [spaceName], references: [name], onDelete: Cascade)
+  title         String        // text of the thread's first message
+  lastMessageAt DateTime
+  messageCount  Int           @default(0)
+
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  linkSource    String?       // null = not decided yet, "auto" = matched by sync, "manual" = set by a person (never auto-changed)
+
+  messages      ChatMessage[]
+
+  @@index([customerId])
+  @@index([spaceName])
+}
+
+model ChatMessage {
+  name            String     @id // spaces/AAAA/messages/CCCC
+  threadName      String
+  thread          ChatThread @relation(fields: [threadName], references: [name], onDelete: Cascade)
+  text            String
+  senderName      String?
+  createTime      DateTime
+  attachmentCount Int        @default(0)
+
+  @@index([threadName, createTime])
 }

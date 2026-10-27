@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { normalizePhoneNumber, extractDigits } from "./phone-utils";
+import { buildNormalizedPhones, linkUnmatchedCalls, phoneMatchKeys } from "./customers";
 
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 // From https://developer.api.intuit.com/.well-known/openid_configuration
@@ -268,12 +268,33 @@ async function getQboCustomerTypes(): Promise<Map<string, string>> {
   }
 }
 
-export async function syncQboCustomers() {
+type QboSyncResult = { syncedCount: number; invoiceCount: number; mergedCount: number; linkedCalls: number };
+let qboSyncInFlight: Promise<QboSyncResult> | null = null;
+
+/** Syncs customers and open invoices. Overlapping calls (scheduler + Sync button) share one run. */
+export function syncQboCustomers(): Promise<QboSyncResult> {
+  qboSyncInFlight ??= runQboSync().finally(() => {
+    qboSyncInFlight = null;
+  });
+  return qboSyncInFlight;
+}
+
+async function runQboSync(): Promise<QboSyncResult> {
   const customers = await qboQueryAll("Customer", "Active = true");
   const customerTypes = await getQboCustomerTypes();
   const displayNameById = new Map(customers.map((c: any) => [String(c.Id), c.DisplayName as string]));
 
+  // Contacts created in TalkCRM (no qboId) that may since have been added in QuickBooks
+  const localContacts = await db.customer.findMany({
+    where: { qboId: null },
+    select: { id: true, primaryPhone: true, mobilePhone: true, email: true },
+  });
+  const existingQboIds = new Set(
+    (await db.customer.findMany({ where: { qboId: { not: null } }, select: { qboId: true } })).map((c) => c.qboId)
+  );
+
   let syncedCount = 0;
+  let mergedCount = 0;
   for (const c of customers) {
     const primaryPhone = c.PrimaryPhone?.FreeFormNumber || null;
     const mobilePhone = c.Mobile?.FreeFormNumber || null;
@@ -289,18 +310,12 @@ export async function syncQboCustomers() {
     const accountNumber = extractAccountNumber(qboNotes, companyName, c.Suffix);
     const billingAddress = formatQboAddress(c.BillAddr);
 
-    const phoneDigits = [extractDigits(primaryPhone || ""), extractDigits(mobilePhone || "")].filter(Boolean);
-    const normalizedList = [
-      ...phoneDigits,
-      ...phoneDigits.map((d) => normalizePhoneNumber(d)),
-    ].join(",");
-
     const data = {
       name,
       companyName,
       primaryPhone,
       mobilePhone,
-      normalizedPhones: normalizedList,
+      normalizedPhones: buildNormalizedPhones(primaryPhone, mobilePhone),
       email,
       billingAddress,
       qboBalance,
@@ -310,17 +325,39 @@ export async function syncQboCustomers() {
       accountNumber,
     };
 
+    const qboId = String(c.Id);
+    if (!existingQboIds.has(qboId)) {
+      // New in QuickBooks: if someone already added this person in TalkCRM (same phone or
+      // email), adopt that contact so its calls, notes and Chat threads carry over (no duplicate)
+      const qboPhones = new Set(phoneMatchKeys(primaryPhone, mobilePhone));
+      const qboEmail = email?.trim().toLowerCase();
+      const local = localContacts.find(
+        (l) =>
+          phoneMatchKeys(l.primaryPhone, l.mobilePhone).some((p) => qboPhones.has(p)) ||
+          (!!qboEmail && l.email?.trim().toLowerCase() === qboEmail)
+      );
+      if (local) {
+        await db.customer.update({ where: { id: local.id }, data: { qboId, ...data } });
+        localContacts.splice(localContacts.indexOf(local), 1);
+        existingQboIds.add(qboId);
+        mergedCount++;
+        syncedCount++;
+        continue;
+      }
+    }
+
     await db.customer.upsert({
-      where: { qboId: String(c.Id) },
+      where: { qboId },
       update: data,
-      create: { qboId: String(c.Id), ...data },
+      create: { qboId, ...data },
     });
     syncedCount++;
   }
 
   const invoiceCount = await syncQboOpenInvoices();
+  const linkedCalls = await linkUnmatchedCalls();
 
-  return { syncedCount, invoiceCount };
+  return { syncedCount, invoiceCount, mergedCount, linkedCalls };
 }
 
 /**

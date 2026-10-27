@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeGoogleToken, GOOGLE_STATE_COOKIE } from "@/lib/gmail";
+import { exchangeGoogleToken, GOOGLE_STATE_COOKIE } from "@/lib/google";
+import { getRequestUser } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -15,12 +16,19 @@ export async function GET(req: NextRequest) {
   const expectedState = req.cookies.get(GOOGLE_STATE_COOKIE)?.value;
   if (!state || !expectedState || state !== expectedState) {
     return NextResponse.redirect(
-      `${appUrl}/settings?error=${encodeURIComponent("Gmail connection could not be verified. Please try Connect again.")}`
+      `${appUrl}/settings?error=${encodeURIComponent("Google connection could not be verified. Please try Connect again.")}`
+    );
+  }
+
+  const user = await getRequestUser(req);
+  if (!user) {
+    return NextResponse.redirect(
+      `${appUrl}/settings?error=${encodeURIComponent("Sign in to TalkCRM before connecting Google.")}`
     );
   }
 
   try {
-    await exchangeGoogleToken(code);
+    await exchangeGoogleToken(code, user.email);
     const res = NextResponse.redirect(`${appUrl}/settings?success=google_connected`);
     res.cookies.delete({ name: GOOGLE_STATE_COOKIE, path: "/api/auth/google" });
     return res;

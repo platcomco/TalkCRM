@@ -129,4 +129,10 @@ export function getSessionFromCookies(req: NextRequest): string | undefined {
   return req.cookies.get(SESSION_COOKIE_NAME)?.value;
 }
 
+/** The signed-in staff member making this request, or null (e.g. local use with ENABLE_AUTH=false). */
+export async function getRequestUser(req: NextRequest): Promise<SessionUser | null> {
+  const token = getSessionFromCookies(req);
+  return token ? await verifySessionToken(token) : null;
+}
+
 export { SESSION_COOKIE_NAME };

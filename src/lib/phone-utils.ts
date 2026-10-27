@@ -49,6 +49,22 @@ export function formatPhoneDisplay(phone: string): string {
   return phone;
 }
 
+/** Talk time for display: "45s", "3m 05s", "1h 02m". */
+export function formatDuration(seconds: number): string {
+  if (!seconds || seconds < 1) return "0s";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+/** The office line a call came in on (our DID) or went out from (an extension), or a dash. */
+export function formatLine(toExtension: string | null | undefined): string {
+  return toExtension ? formatPhoneDisplay(toExtension) : "—";
+}
+
 /**
  * Generates search patterns for database matching.
  * e.g., for "+15551234567" -> ["+15551234567", "5551234567", "15551234567"]
