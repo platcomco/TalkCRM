@@ -433,10 +433,17 @@ export default function CustomerDetailPage() {
             ) : (
               <div className="space-y-3">
                 {customer.emails.map((email: any) => (
-                  <div key={email.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-1.5 hover:border-slate-300 transition">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900 text-sm">{email.subject}</span>
-                      <span className="text-[11px] text-slate-500">{email.date}</span>
+                  <a
+                    key={email.id}
+                    href={email.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open this conversation in Gmail"
+                    className="block bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-1.5 hover:border-blue-300 hover:shadow-md transition"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">{email.subject}<ExternalLink className="w-3 h-3 text-slate-400 shrink-0" /></span>
+                      <span className="text-[11px] text-slate-500 shrink-0">{email.date ? new Date(email.date).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</span>
                     </div>
                     <div className="text-xs text-slate-600">
                       <span className="font-medium">From:</span> {email.from}
@@ -444,7 +451,7 @@ export default function CustomerDetailPage() {
                     <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                       {decodeEntities(email.snippet)}
                     </p>
-                  </div>
+                  </a>
                 ))}
               </div>
             )}
