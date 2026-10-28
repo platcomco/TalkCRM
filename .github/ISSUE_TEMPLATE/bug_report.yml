@@ -1,0 +1,51 @@
+name: Bug report
+description: Something in TalkCRM isn't working right
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This repository is public.** Don't include customer names, phone numbers, DTV account numbers, emails, or secrets. Blur them in screenshots.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Calls / UniFi Talk
+        - Customers
+        - Invoices / QuickBooks
+        - Gmail
+        - Google Chat / Site Visits
+        - Dashboard
+        - Settings / sign-in
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Desktop
+        - Phone
+        - Both
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or logs
+      description: Optional. Blur any customer details first.
