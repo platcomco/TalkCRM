@@ -13,6 +13,8 @@ model Customer {
   companyName      String?
   primaryPhone     String?
   mobilePhone      String?
+  alternatePhone   String?        // QuickBooks "Alternate phone"
+  extraPhones      String         @default("") // TalkCRM-only caller numbers (10 digits, comma-separated); kept across QuickBooks syncs
   normalizedPhones String         @default("") // comma-separated digits for matching
   email            String?
   billingAddress   String?
