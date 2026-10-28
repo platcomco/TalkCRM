@@ -1,5 +1,6 @@
 import { db } from "./db";
-import { buildNormalizedPhones, linkUnmatchedCalls, phoneMatchKeys } from "./customers";
+import { buildNormalizedPhones, customerPhones, linkUnmatchedCalls, parseExtraPhones, phoneMatchKeys } from "./customers";
+import { formatPhoneDisplay } from "./phone-utils";
 
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 // From https://developer.api.intuit.com/.well-known/openid_configuration
@@ -184,16 +185,18 @@ async function getValidQboConnection() {
   });
 }
 
+function qboBaseUrl(realmId: string | null): string {
+  return process.env.QBO_ENVIRONMENT === "production"
+    ? `https://quickbooks.api.intuit.com/v3/company/${realmId}`
+    : `https://sandbox-quickbooks.api.intuit.com/v3/company/${realmId}`;
+}
+
 /**
  * Runs a QuickBooks query and follows pagination until every row is returned.
  */
 async function qboQueryAll(entity: string, where: string): Promise<any[]> {
   const connection = await getValidQboConnection();
-
-  const baseUrl =
-    process.env.QBO_ENVIRONMENT === "production"
-      ? `https://quickbooks.api.intuit.com/v3/company/${connection.realmId}`
-      : `https://sandbox-quickbooks.api.intuit.com/v3/company/${connection.realmId}`;
+  const baseUrl = qboBaseUrl(connection.realmId);
 
   const rows: any[] = [];
   for (let start = 1; ; start += QBO_PAGE_SIZE) {
@@ -287,10 +290,13 @@ async function runQboSync(): Promise<QboSyncResult> {
   // Contacts created in TalkCRM (no qboId) that may since have been added in QuickBooks
   const localContacts = await db.customer.findMany({
     where: { qboId: null },
-    select: { id: true, primaryPhone: true, mobilePhone: true, email: true },
+    select: { id: true, primaryPhone: true, mobilePhone: true, alternatePhone: true, extraPhones: true, email: true },
   });
-  const existingQboIds = new Set(
-    (await db.customer.findMany({ where: { qboId: { not: null } }, select: { qboId: true } })).map((c) => c.qboId)
+  // Numbers added in TalkCRM aren't in QuickBooks, so each customer keeps its own across syncs
+  const extraPhonesByQboId = new Map(
+    (await db.customer.findMany({ where: { qboId: { not: null } }, select: { qboId: true, extraPhones: true } })).map(
+      (c) => [c.qboId as string, c.extraPhones]
+    )
   );
 
   let syncedCount = 0;
@@ -298,6 +304,7 @@ async function runQboSync(): Promise<QboSyncResult> {
   for (const c of customers) {
     const primaryPhone = c.PrimaryPhone?.FreeFormNumber || null;
     const mobilePhone = c.Mobile?.FreeFormNumber || null;
+    const alternatePhone = c.AlternatePhone?.FreeFormNumber || null;
     const email = c.PrimaryEmailAddr?.Address || null;
     const name = c.DisplayName || `${c.GivenName || ""} ${c.FamilyName || ""}`.trim() || "Unknown";
     const companyName = c.CompanyName || null;
@@ -315,7 +322,7 @@ async function runQboSync(): Promise<QboSyncResult> {
       companyName,
       primaryPhone,
       mobilePhone,
-      normalizedPhones: buildNormalizedPhones(primaryPhone, mobilePhone),
+      alternatePhone,
       email,
       billingAddress,
       qboBalance,
@@ -326,30 +333,51 @@ async function runQboSync(): Promise<QboSyncResult> {
     };
 
     const qboId = String(c.Id);
-    if (!existingQboIds.has(qboId)) {
+    const qboPhones = new Set(phoneMatchKeys(primaryPhone, mobilePhone, alternatePhone));
+    if (!extraPhonesByQboId.has(qboId)) {
       // New in QuickBooks: if someone already added this person in TalkCRM (same phone or
       // email), adopt that contact so its calls, notes and Chat threads carry over (no duplicate)
-      const qboPhones = new Set(phoneMatchKeys(primaryPhone, mobilePhone));
       const qboEmail = email?.trim().toLowerCase();
       const local = localContacts.find(
         (l) =>
-          phoneMatchKeys(l.primaryPhone, l.mobilePhone).some((p) => qboPhones.has(p)) ||
+          phoneMatchKeys(...customerPhones(l)).some((p) => qboPhones.has(p)) ||
           (!!qboEmail && l.email?.trim().toLowerCase() === qboEmail)
       );
       if (local) {
-        await db.customer.update({ where: { id: local.id }, data: { qboId, ...data } });
+        // The contact's numbers that QuickBooks doesn't have stay as TalkCRM-only numbers
+        const extraPhones = Array.from(new Set(phoneMatchKeys(...customerPhones(local))))
+          .filter((p) => !qboPhones.has(p))
+          .join(",");
+        await db.customer.update({
+          where: { id: local.id },
+          data: {
+            qboId,
+            ...data,
+            extraPhones,
+            normalizedPhones: buildNormalizedPhones(...customerPhones({ ...data, extraPhones })),
+          },
+        });
         localContacts.splice(localContacts.indexOf(local), 1);
-        existingQboIds.add(qboId);
+        extraPhonesByQboId.set(qboId, extraPhones);
         mergedCount++;
         syncedCount++;
         continue;
       }
     }
 
+    // A TalkCRM-only number that has since been entered in QuickBooks no longer needs keeping
+    const extraPhones = parseExtraPhones(extraPhonesByQboId.get(qboId))
+      .filter((p) => !qboPhones.has(p))
+      .join(",");
+    const synced = {
+      ...data,
+      extraPhones,
+      normalizedPhones: buildNormalizedPhones(...customerPhones({ ...data, extraPhones })),
+    };
     await db.customer.upsert({
       where: { qboId },
-      update: data,
-      create: { qboId, ...data },
+      update: synced,
+      create: { qboId, ...synced },
     });
     syncedCount++;
   }
@@ -396,6 +424,57 @@ export async function getQboCustomerInvoices(qboId: string, limit = 100): Promis
       status: balance <= 0 ? "Paid" : dueDate && dueDate < today ? "Overdue" : "Open",
     };
   });
+}
+
+export type QboPhoneField = "PrimaryPhone" | "Mobile" | "AlternatePhone";
+
+/**
+ * Saves a phone number on a QuickBooks customer, in the first empty slot of Mobile then
+ * Alternate phone (existing numbers are never overwritten). Returns the field it is in, or null
+ * when every slot is already taken.
+ */
+export async function addQboCustomerPhone(
+  qboId: string,
+  phone: string
+): Promise<{ field: QboPhoneField | null; alreadyThere: boolean }> {
+  if (!/^\d+$/.test(qboId)) throw new Error("Invalid QuickBooks customer id");
+  const [key] = phoneMatchKeys(phone);
+  if (!key) throw new Error("Enter a 10-digit phone number");
+
+  const connection = await getValidQboConnection();
+  const baseUrl = qboBaseUrl(connection.realmId);
+  const headers = {
+    Authorization: `Bearer ${connection.accessToken}`,
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+
+  // Read first: the update needs the current SyncToken, and the slots may have changed since the last sync
+  const readRes = await fetch(`${baseUrl}/customer/${qboId}?minorversion=${QBO_MINOR_VERSION}`, { headers });
+  if (!readRes.ok) throw await qboFailure("QuickBooks customer read", readRes);
+  const customer = (await readRes.json())?.Customer;
+  if (!customer) throw new Error("QuickBooks customer not found");
+
+  const fields: QboPhoneField[] = ["PrimaryPhone", "Mobile", "AlternatePhone"];
+  const existing = fields.find((f) => phoneMatchKeys(customer[f]?.FreeFormNumber)[0] === key);
+  if (existing) return { field: existing, alreadyThere: true };
+
+  const field = (["Mobile", "AlternatePhone"] as const).find((f) => !customer[f]?.FreeFormNumber?.trim());
+  if (!field) return { field: null, alreadyThere: false };
+
+  // Sparse update: only this field changes
+  const writeRes = await fetch(`${baseUrl}/customer?minorversion=${QBO_MINOR_VERSION}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      Id: customer.Id,
+      SyncToken: customer.SyncToken,
+      sparse: true,
+      [field]: { FreeFormNumber: formatPhoneDisplay(key) },
+    }),
+  });
+  if (!writeRes.ok) throw await qboFailure("QuickBooks customer update", writeRes);
+  return { field, alreadyThere: false };
 }
 
 /**

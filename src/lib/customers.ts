@@ -15,6 +15,23 @@ export function phoneMatchKeys(...phones: (string | null | undefined)[]): string
     .map((d) => d.slice(-10));
 }
 
+/** The TalkCRM-only numbers stored in Customer.extraPhones. */
+export function parseExtraPhones(extraPhones: string | null | undefined): string[] {
+  return (extraPhones || "").split(",").filter(Boolean);
+}
+
+type CustomerPhones = {
+  primaryPhone?: string | null;
+  mobilePhone?: string | null;
+  alternatePhone?: string | null;
+  extraPhones?: string | null;
+};
+
+/** Every phone a customer can be matched on: QuickBooks' numbers plus numbers added in TalkCRM. */
+export function customerPhones(c: CustomerPhones): (string | null | undefined)[] {
+  return [c.primaryPhone, c.mobilePhone, c.alternatePhone, ...parseExtraPhones(c.extraPhones)];
+}
+
 /**
  * Moves every call from this phone number to the customer, even calls that were matched to
  * another customer sharing the number. Used when someone creates a contact for a caller.
@@ -41,13 +58,21 @@ export async function linkUnmatchedCalls(): Promise<number> {
   if (calls.length === 0) return 0;
 
   const customers = await db.customer.findMany({
-    select: { id: true, primaryPhone: true, mobilePhone: true, parentName: true, name: true },
+    select: {
+      id: true,
+      primaryPhone: true,
+      mobilePhone: true,
+      alternatePhone: true,
+      extraPhones: true,
+      parentName: true,
+      name: true,
+    },
     orderBy: { name: "asc" },
   });
   // Same preference as the webhook: a top-level account over a QuickBooks sub-client
   const customerByPhone = new Map<string, { id: string; parentName: string | null }>();
   for (const c of customers) {
-    for (const key of phoneMatchKeys(c.primaryPhone, c.mobilePhone)) {
+    for (const key of phoneMatchKeys(...customerPhones(c))) {
       const existing = customerByPhone.get(key);
       if (!existing || (existing.parentName && !c.parentName)) customerByPhone.set(key, c);
     }

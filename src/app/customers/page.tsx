@@ -7,6 +7,7 @@ import { Users, Search, Plus, Phone, Mail, Building2, ExternalLink, DollarSign, 
 import { formatPhoneDisplay, extractDigits } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
 import { CustomerTags } from "@/components/CustomerTags";
+import { AddPhoneForm } from "@/components/AddPhoneForm";
 
 type SortKey = "name" | "contact" | "balance" | "activity";
 type SortDir = "asc" | "desc";
@@ -99,6 +100,42 @@ function CustomersContent() {
     billingAddress: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Opened from a call: the caller is often an existing customer on another phone (e.g. their cell),
+  // so the modal starts on attaching the number to them
+  const [modalMode, setModalMode] = useState<"existing" | "new">(initialNewPhone ? "existing" : "new");
+  const [linkQuery, setLinkQuery] = useState("");
+  const [linkResults, setLinkResults] = useState<any[]>([]);
+  const [linkTarget, setLinkTarget] = useState<any>(null);
+  const [linkMessage, setLinkMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (modalMode !== "existing" || linkQuery.trim().length < 2) {
+      setLinkResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/customers?q=${encodeURIComponent(linkQuery.trim())}`, { signal: controller.signal });
+        const data = await res.json();
+        setLinkResults(Array.isArray(data) ? data.slice(0, 8) : []);
+      } catch {
+        // Aborted by the next keystroke, or a network error: keep the previous results
+      }
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [linkQuery, modalMode]);
+
+  const closeModal = () => {
+    setShowAddModal(false);
+    setLinkTarget(null);
+    setLinkMessage(null);
+    setLinkQuery("");
+  };
 
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
 
@@ -307,17 +344,119 @@ function CustomersContent() {
       {/* Add Customer Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900">Add New Customer</h2>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
+              <h2 className="text-lg font-bold text-slate-900">
+                {initialNewPhone ? `Who is ${formatPhoneDisplay(initialNewPhone)}?` : "Add New Customer"}
+              </h2>
+              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {initialNewPhone && (
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs">
+                {([
+                  ["existing", "Existing customer"],
+                  ["new", "New contact"],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setModalMode(mode)}
+                    className={`flex-1 px-3 py-1.5 rounded-lg font-medium transition ${
+                      modalMode === mode ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {modalMode === "existing" && initialNewPhone ? (
+              linkMessage ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                    {linkMessage} Calls from this number now show {linkTarget.name}.
+                  </p>
+                  <div className="flex justify-end space-x-2">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                    >
+                      Close
+                    </button>
+                    <Link
+                      href={`/customers/${linkTarget.id}`}
+                      className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition"
+                    >
+                      Open {linkTarget.name}
+                    </Link>
+                  </div>
+                </div>
+              ) : linkTarget ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <span className="font-semibold text-slate-900">{linkTarget.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setLinkTarget(null)}
+                      className="text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Change
+                    </button>
+                  </div>
+                  <AddPhoneForm
+                    customer={linkTarget}
+                    initialPhone={initialNewPhone}
+                    onSaved={(message) => {
+                      setLinkMessage(message);
+                      fetchCustomers(query, true);
+                    }}
+                    onCancel={closeModal}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Search customers by name, company or account #..."
+                      value={linkQuery}
+                      onChange={(e) => setLinkQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">
+                    {linkResults.length === 0 ? (
+                      <p className="p-3 text-[11px] text-slate-500">
+                        {linkQuery.trim().length < 2 ? "Type at least 2 letters to search." : "No matching customers."}
+                      </p>
+                    ) : (
+                      linkResults.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setLinkTarget(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-50 transition"
+                        >
+                          <span className="block text-xs font-semibold text-slate-900">{c.name}</span>
+                          <span className="block text-[11px] text-slate-500">
+                            {[c.companyName, c.primaryPhone && formatPhoneDisplay(c.primaryPhone), c.accountNumber && `DTV ${c.accountNumber}`]
+                              .filter(Boolean)
+                              .join(" · ") || (c.qboId ? "QuickBooks customer" : "TalkCRM contact")}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )
+            ) : (
             <form onSubmit={handleCreateCustomer} className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
@@ -404,6 +543,7 @@ function CustomersContent() {
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

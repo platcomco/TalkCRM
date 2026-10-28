@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { fetchCustomerEmails } from "@/lib/gmail";
 import { getRequestUser } from "@/lib/auth";
 import { chatThreadUrl } from "@/lib/google-chat";
-import { buildNormalizedPhones, linkUnmatchedCalls } from "@/lib/customers";
+import { buildNormalizedPhones, customerPhones, linkUnmatchedCalls } from "@/lib/customers";
 
 export async function GET(
   req: NextRequest,
@@ -76,7 +76,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const existing = await db.customer.findUnique({ where: { id }, select: { qboId: true } });
+    const existing = await db.customer.findUnique({ where: { id }, select: { qboId: true, extraPhones: true } });
     if (!existing) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
     if (existing.qboId) return NextResponse.json({ error: QBO_MANAGED_ERROR }, { status: 409 });
 
@@ -91,7 +91,9 @@ export async function PUT(
         companyName: body.companyName || null,
         primaryPhone: body.primaryPhone || null,
         mobilePhone: body.mobilePhone || null,
-        normalizedPhones: buildNormalizedPhones(body.primaryPhone, body.mobilePhone),
+        normalizedPhones: buildNormalizedPhones(
+          ...customerPhones({ primaryPhone: body.primaryPhone, mobilePhone: body.mobilePhone, extraPhones: existing.extraPhones })
+        ),
         email: body.email || null,
         billingAddress: body.billingAddress || null,
       },

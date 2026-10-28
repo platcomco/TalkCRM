@@ -268,7 +268,7 @@ export function CallScreenPop() {
                 className="text-xs font-semibold bg-amber-600 text-white px-2.5 py-1 rounded-lg hover:bg-amber-700 flex items-center gap-1 transition whitespace-nowrap"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Create</span>
+                <span>Link Caller</span>
               </Link>
             </div>
           )}

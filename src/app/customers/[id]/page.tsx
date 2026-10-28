@@ -23,12 +23,14 @@ import {
   MessageSquare,
   MessagesSquare,
   Pencil,
+  X,
 } from "lucide-react";
 import { formatPhoneDisplay, formatDuration, formatLine } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
 import { CustomerTags } from "@/components/CustomerTags";
 import { EditCustomerModal } from "@/components/EditCustomerModal";
 import { ChatThreadsPanel } from "@/components/ChatThreadsPanel";
+import { AddPhoneForm } from "@/components/AddPhoneForm";
 
 // Gmail snippets arrive HTML-escaped ("don&#39;t")
 function decodeEntities(text: string): string {
@@ -49,6 +51,17 @@ export default function CustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"invoices" | "emails" | "chat" | "calls" | "notes">("invoices");
   const [showEdit, setShowEdit] = useState(false);
+  const [showAddPhone, setShowAddPhone] = useState(false);
+  const [phoneNotice, setPhoneNotice] = useState<string | null>(null);
+
+  const handleRemovePhone = async (phone: string) => {
+    if (!confirm(`Remove ${formatPhoneDisplay(phone)} from ${customer.name}? Calls already linked stay linked.`)) return;
+    const res = await fetch(`/api/customers/${id}/phones?phone=${encodeURIComponent(phone)}`, { method: "DELETE" });
+    if (res.ok) {
+      setPhoneNotice(null);
+      fetchCustomer();
+    }
+  };
 
   // Note form state
   const [newNote, setNewNote] = useState("");
@@ -151,6 +164,28 @@ export default function CustomerDetailPage() {
         />
       )}
 
+      {showAddPhone && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900">Add Phone Number</h2>
+              <button onClick={() => setShowAddPhone(false)} className="text-slate-400 hover:text-slate-600 p-1" title="Close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <AddPhoneForm
+              customer={customer}
+              onSaved={(message) => {
+                setShowAddPhone(false);
+                setPhoneNotice(message);
+                fetchCustomer();
+              }}
+              onCancel={() => setShowAddPhone(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Back button */}
       <div>
         <Link
@@ -246,6 +281,35 @@ export default function CustomerDetailPage() {
               {customer.mobilePhone && (
                 <span className="block text-slate-500">Mobile: {formatPhoneDisplay(customer.mobilePhone)}</span>
               )}
+              {customer.alternatePhone && (
+                <span className="block text-slate-500">Alternate: {formatPhoneDisplay(customer.alternatePhone)}</span>
+              )}
+              {(customer.extraPhones || "")
+                .split(",")
+                .filter(Boolean)
+                .map((p: string) => (
+                  <span key={p} className="flex items-center gap-1 text-slate-500">
+                    <span title="Added in TalkCRM (not in QuickBooks)">Other: {formatPhoneDisplay(p)}</span>
+                    <button
+                      onClick={() => handleRemovePhone(p)}
+                      className="text-slate-400 hover:text-rose-600 p-0.5"
+                      title="Remove this number"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              <button
+                onClick={() => {
+                  setPhoneNotice(null);
+                  setShowAddPhone(true);
+                }}
+                className="mt-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add number</span>
+              </button>
+              {phoneNotice && <span className="block mt-1 text-[11px] text-emerald-700">{phoneNotice}</span>}
             </div>
           </div>
 

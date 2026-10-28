@@ -232,7 +232,7 @@ export default async function DashboardPage() {
                           href={`/customers?newPhone=${encodeURIComponent(call.fromNumber)}`}
                           className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-2 py-1 rounded-md transition"
                         >
-                          Add Contact
+                          Link Caller
                         </Link>
                       )}
                     </div>
