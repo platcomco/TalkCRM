@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a change or new feature for TalkCRM
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This repository is public.** Don't include customer names, phone numbers, DTV account numbers, emails, or secrets.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task or problem, e.g. "callers on their cell phones don't match a customer".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you picture it working. Rough ideas are fine.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Calls / UniFi Talk
+        - Customers
+        - Invoices / QuickBooks
+        - Gmail
+        - Google Chat / Site Visits
+        - Dashboard
+        - Settings / sign-in
+        - Other
