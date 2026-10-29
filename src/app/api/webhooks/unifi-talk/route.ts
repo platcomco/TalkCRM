@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
           invoices: {
             where: { status: { in: ["Open", "Overdue"] } },
           },
+          estimates: { orderBy: { txnDate: "desc" } },
         },
         orderBy: { name: "asc" },
         take: 50,
@@ -163,6 +164,17 @@ export async function POST(req: NextRequest) {
             email: customer.email,
             qboBalance: customer.qboBalance,
             openInvoicesCount: customer.invoices?.length || 0,
+            // Pending/Accepted quotes: likely what they're calling about, and a chance to review old ones
+            openEstimates: (customer.estimates || []).slice(0, 5).map((e: any) => ({
+              qboEstimateId: e.qboEstimateId,
+              docNumber: e.docNumber,
+              totalAmount: e.totalAmount,
+              status: e.status,
+              txnDate: e.txnDate,
+              expirationDate: e.expirationDate,
+              summary: e.summary,
+            })),
+            openEstimatesCount: customer.estimates?.length || 0,
             customerType: customer.customerType,
             accountNumber: customer.accountNumber,
             parentName: customer.parentName,
