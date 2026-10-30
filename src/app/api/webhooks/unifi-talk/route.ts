@@ -38,7 +38,12 @@ export async function POST(req: NextRequest) {
     // Internal calls (extension to extension, e.g. 1001 → 1003) and feature codes (*97) aren't
     // customer calls: skip them rather than logging an "Unknown" caller. A blocked caller ID
     // (no digits at all) is still a real outside call and is kept.
-    if (/^[*#]?\d{1,6}$/.test(remoteNumber.trim())) {
+    const internal = /^[*#]?\d{1,6}$/.test(remoteNumber.trim());
+
+    // Record every event received (no phone numbers) so a call that never ended can be traced
+    console.log("[unifi-talk webhook]", JSON.stringify({ event: rawEvent, callId, direction, internal }));
+
+    if (internal) {
       return NextResponse.json({ success: true, ignored: "internal call" });
     }
 
