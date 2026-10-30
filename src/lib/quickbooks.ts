@@ -450,15 +450,10 @@ export async function getQboCustomerEstimates(qboId: string, limit = 100): Promi
  * open quotes show on the screen pop and can be reviewed with them. Others are removed.
  */
 async function syncQboOpenEstimates(): Promise<number> {
-  let estimates: any[];
-  try {
-    estimates = await qboQueryAll("Estimate", `TxnStatus IN ('Pending', 'Accepted')`);
-  } catch {
-    // Not every QuickBooks edition can filter on status: read them all and filter here
-    estimates = (await qboQueryAll("Estimate", "TxnDate > '1900-01-01'")).filter((e: any) =>
-      OPEN_ESTIMATE_STATUSES.includes(e.TxnStatus)
-    );
-  }
+  // QuickBooks can't filter on TxnStatus ("not queryable"): read them all and filter here
+  const estimates = (await qboQueryAll("Estimate", "TxnDate > '1900-01-01'")).filter((e: any) =>
+    OPEN_ESTIMATE_STATUSES.includes(e.TxnStatus)
+  );
 
   const customers = await db.customer.findMany({
     where: { qboId: { not: null } },
