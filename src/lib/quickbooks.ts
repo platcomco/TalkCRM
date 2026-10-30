@@ -1,6 +1,9 @@
 import { db } from "./db";
 import { buildNormalizedPhones, customerPhones, linkUnmatchedCalls, parseExtraPhones, phoneMatchKeys } from "./customers";
 import { formatPhoneDisplay } from "./phone-utils";
+import { OPEN_ESTIMATE_STATUSES, qboEstimateUrl } from "./qbo-links";
+
+export { qboEstimateUrl };
 
 const QBO_AUTH_URL = "https://appcenter.intuit.com/connect/oauth2";
 // From https://developer.api.intuit.com/.well-known/openid_configuration
@@ -271,7 +274,13 @@ async function getQboCustomerTypes(): Promise<Map<string, string>> {
   }
 }
 
-type QboSyncResult = { syncedCount: number; invoiceCount: number; mergedCount: number; linkedCalls: number };
+type QboSyncResult = {
+  syncedCount: number;
+  invoiceCount: number;
+  estimateCount: number;
+  mergedCount: number;
+  linkedCalls: number;
+};
 let qboSyncInFlight: Promise<QboSyncResult> | null = null;
 
 /** Syncs customers and open invoices. Overlapping calls (scheduler + Sync button) share one run. */
@@ -383,11 +392,97 @@ async function runQboSync(): Promise<QboSyncResult> {
   }
 
   const invoiceCount = await syncQboOpenInvoices();
+  const estimateCount = await syncQboOpenEstimates();
   const linkedCalls = await linkUnmatchedCalls();
 
   await db.integration.update({ where: { provider: "quickbooks" }, data: { lastSyncedAt: new Date() } });
 
-  return { syncedCount, invoiceCount, mergedCount, linkedCalls };
+  return { syncedCount, invoiceCount, estimateCount, mergedCount, linkedCalls };
+}
+
+
+export type QboEstimateSummary = {
+  id: string;
+  qboUrl: string;
+  docNumber: string;
+  txnDate: string | null;
+  expirationDate: string | null;
+  acceptedDate: string | null;
+  totalAmount: number;
+  status: string; // Pending, Accepted, Closed (invoiced), Rejected
+  summary: string | null;
+};
+
+/** What an estimate is for: its first few line items (name, or description when there's no item). */
+function summarizeEstimateLines(lines: any[] | undefined): string | null {
+  const items = (lines || [])
+    .filter((l) => l.DetailType === "SalesItemLineDetail")
+    .map((l) => (l.Description || l.SalesItemLineDetail?.ItemRef?.name || "").trim().split("\n")[0])
+    .filter(Boolean);
+  if (items.length === 0) return null;
+  const text = items.slice(0, 3).join(", ") + (items.length > 3 ? ` +${items.length - 3} more` : "");
+  return text.length > 200 ? `${text.slice(0, 197)}...` : text;
+}
+
+function toEstimateSummary(est: any): QboEstimateSummary {
+  return {
+    id: String(est.Id),
+    qboUrl: qboEstimateUrl(String(est.Id)),
+    docNumber: est.DocNumber || String(est.Id),
+    txnDate: est.TxnDate || null,
+    expirationDate: est.ExpirationDate || null,
+    acceptedDate: est.AcceptedDate || null,
+    totalAmount: parseFloat(est.TotalAmt || "0"),
+    status: est.TxnStatus || "Pending",
+    summary: summarizeEstimateLines(est.Line),
+  };
+}
+
+/** One customer's estimates (every status), newest first, read live from QuickBooks. */
+export async function getQboCustomerEstimates(qboId: string, limit = 100): Promise<QboEstimateSummary[]> {
+  if (!/^\d+$/.test(qboId)) throw new Error("Invalid QuickBooks customer id");
+  const estimates = await qboQueryAll("Estimate", `CustomerRef = '${qboId}' ORDERBY TxnDate DESC`);
+  return estimates.slice(0, limit).map(toEstimateSummary);
+}
+
+/**
+ * Caches every estimate still awaiting a decision (Pending or Accepted, however old) so callers'
+ * open quotes show on the screen pop and can be reviewed with them. Others are removed.
+ */
+async function syncQboOpenEstimates(): Promise<number> {
+  let estimates: any[];
+  try {
+    estimates = await qboQueryAll("Estimate", `TxnStatus IN ('Pending', 'Accepted')`);
+  } catch {
+    // Not every QuickBooks edition can filter on status: read them all and filter here
+    estimates = (await qboQueryAll("Estimate", "TxnDate > '1900-01-01'")).filter((e: any) =>
+      OPEN_ESTIMATE_STATUSES.includes(e.TxnStatus)
+    );
+  }
+
+  const customers = await db.customer.findMany({
+    where: { qboId: { not: null } },
+    select: { id: true, qboId: true },
+  });
+  const customerIdByQboId = new Map(customers.map((c) => [c.qboId as string, c.id]));
+
+  const keptIds: string[] = [];
+  for (const est of estimates) {
+    const customerId = customerIdByQboId.get(String(est.CustomerRef?.value));
+    if (!customerId) continue; // estimate for an inactive customer
+
+    const { id: qboEstimateId, qboUrl, ...summary } = toEstimateSummary(est);
+    const data = { ...summary, customerId };
+    await db.estimateCache.upsert({
+      where: { qboEstimateId },
+      update: data,
+      create: { qboEstimateId, ...data },
+    });
+    keptIds.push(qboEstimateId);
+  }
+
+  await db.estimateCache.deleteMany({ where: { qboEstimateId: { notIn: keptIds } } });
+  return keptIds.length;
 }
 
 export type QboInvoiceSummary = {

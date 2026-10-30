@@ -60,7 +60,7 @@ function SettingsContent() {
       const data = await res.json();
       if (res.ok) {
         setActionMessage(
-          `QuickBooks sync complete! Synced ${data.syncedCount || 0} customers and ${data.invoiceCount || 0} open invoices.` +
+          `QuickBooks sync complete! Synced ${data.syncedCount || 0} customers, ${data.invoiceCount || 0} open invoices and ${data.estimateCount || 0} open estimates.` +
             (data.mergedCount ? ` Merged ${data.mergedCount} TalkCRM contact(s) into their new QuickBooks record.` : "") +
             (data.linkedCalls ? ` Linked ${data.linkedCalls} earlier call(s).` : "")
         );
@@ -218,7 +218,7 @@ function SettingsContent() {
             </div>
             <div>
               <h2 className="font-bold text-slate-900 text-base">QuickBooks Online (QBO)</h2>
-              <p className="text-xs text-slate-500">Syncs customer accounts, phone numbers, balances, and invoices.</p>
+              <p className="text-xs text-slate-500">Syncs customer accounts, phone numbers, balances, invoices, and estimates.</p>
             </div>
           </div>
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${

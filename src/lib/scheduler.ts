@@ -20,7 +20,7 @@ async function runQboSync() {
   try {
     const r = await syncQboCustomers();
     console.log(
-      `[scheduler] QuickBooks sync: ${r.syncedCount} customers, ${r.invoiceCount} open invoices, ${r.mergedCount} merged, ${r.linkedCalls} calls linked`
+      `[scheduler] QuickBooks sync: ${r.syncedCount} customers, ${r.invoiceCount} open invoices, ${r.estimateCount} open estimates, ${r.mergedCount} merged, ${r.linkedCalls} calls linked`
     );
   } catch (err: any) {
     console.error("[scheduler] QuickBooks sync failed:", err?.message || err);

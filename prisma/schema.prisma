@@ -29,6 +29,7 @@ model Customer {
 
   calls            CallLog[]
   invoices         InvoiceCache[]
+  estimates        EstimateCache[]
   notes            Note[]
   chatThreads      ChatThread[]
 
@@ -83,6 +84,25 @@ model InvoiceCache {
   customerId   String
   customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   updatedAt    DateTime  @updatedAt
+
+  @@index([customerId])
+}
+
+// QuickBooks estimates still awaiting a decision (Pending or Accepted), refreshed by each sync
+model EstimateCache {
+  id             String    @id @default(cuid())
+  qboEstimateId  String    @unique // QuickBooks Estimate Id
+  docNumber      String
+  totalAmount    Float
+  txnDate        String?
+  expirationDate String?
+  acceptedDate   String?
+  status         String    // Pending, Accepted
+  summary        String?   // what was quoted (first line items), for reviewing it with the caller
+
+  customerId     String
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  updatedAt      DateTime  @updatedAt
 
   @@index([customerId])
 }

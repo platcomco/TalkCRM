@@ -24,6 +24,7 @@ import {
   MessagesSquare,
   Pencil,
   X,
+  ClipboardList,
 } from "lucide-react";
 import { formatPhoneDisplay, formatDuration, formatLine } from "@/lib/phone-utils";
 import { useCallsChanged } from "@/lib/live-calls";
@@ -31,6 +32,9 @@ import { CustomerTags } from "@/components/CustomerTags";
 import { EditCustomerModal } from "@/components/EditCustomerModal";
 import { ChatThreadsPanel } from "@/components/ChatThreadsPanel";
 import { AddPhoneForm } from "@/components/AddPhoneForm";
+import { EstimateStatusBadge } from "@/components/EstimateStatusBadge";
+import { OPEN_ESTIMATE_STATUSES } from "@/lib/qbo-links";
+
 
 // Gmail snippets arrive HTML-escaped ("don&#39;t")
 function decodeEntities(text: string): string {
@@ -49,7 +53,7 @@ export default function CustomerDetailPage() {
 
   const [customer, setCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"invoices" | "emails" | "chat" | "calls" | "notes">("invoices");
+  const [activeTab, setActiveTab] = useState<"invoices" | "estimates" | "emails" | "chat" | "calls" | "notes">("invoices");
   const [showEdit, setShowEdit] = useState(false);
   const [showAddPhone, setShowAddPhone] = useState(false);
   const [phoneNotice, setPhoneNotice] = useState<string | null>(null);
@@ -93,10 +97,27 @@ export default function CustomerDetailPage() {
     }
   };
 
+  // Estimates likewise: every status live from QuickBooks
+  const [estimateData, setEstimateData] = useState<{ estimates: any[]; message?: string } | null>(null);
+  const fetchEstimates = async () => {
+    try {
+      const res = await fetch(`/api/customers/${id}/estimates`);
+      const data = await res.json();
+      setEstimateData(res.ok ? data : { estimates: [], message: data.error || "Couldn't load estimates." });
+    } catch (err: any) {
+      setEstimateData({ estimates: [], message: `Couldn't load estimates: ${err.message}` });
+    }
+  };
+  const openEstimateCount = estimateData?.estimates.filter((e) => OPEN_ESTIMATE_STATUSES.includes(e.status)).length;
+
   useEffect(() => {
     fetchCustomer();
     setInvoiceData(null);
     fetchInvoices();
+    setEstimateData(null);
+    fetchEstimates();
+    // Linked from the call screen pop ("See all estimates")
+    if (new URLSearchParams(window.location.search).get("tab") === "estimates") setActiveTab("estimates");
   }, [id]);
 
   // Refresh when a call for this customer changes (or after a reconnect, when it's unknown)
@@ -347,6 +368,18 @@ export default function CustomerDetailPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab("estimates")}
+            className={`flex items-center gap-2 py-3 px-5 border-b-2 transition ${
+              activeTab === "estimates"
+                ? "border-blue-600 text-blue-700 bg-white"
+                : "border-transparent hover:text-slate-900"
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span>Estimates ({estimateData ? `${openEstimateCount} open` : "…"})</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("emails")}
             className={`flex items-center gap-2 py-3 px-5 border-b-2 transition ${
               activeTab === "emails"
@@ -460,6 +493,73 @@ export default function CustomerDetailPage() {
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Estimates (open ones first, so they can be reviewed with the customer) */}
+        {activeTab === "estimates" && (
+          <div className="p-6 space-y-3">
+            {estimateData?.message && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {estimateData.message}
+              </p>
+            )}
+            {!estimateData ? (
+              <div className="text-center py-8 text-slate-500 text-sm">Loading estimates from QuickBooks...</div>
+            ) : estimateData.estimates.length === 0 ? (
+              <div className="text-center py-8 text-slate-500 text-sm">
+                {customer.qboId
+                  ? "No estimates found in QuickBooks for this customer."
+                  : "This contact isn't in QuickBooks, so it has no estimates."}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Estimate #</th>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Expires</th>
+                      <th className="py-2.5 px-3">For</th>
+                      <th className="py-2.5 px-3">Total</th>
+                      <th className="py-2.5 px-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {[...estimateData.estimates]
+                      .sort(
+                        (a, b) =>
+                          Number(OPEN_ESTIMATE_STATUSES.includes(b.status)) - Number(OPEN_ESTIMATE_STATUSES.includes(a.status))
+                      )
+                      .map((est: any) => (
+                        <tr key={est.id} className="hover:bg-slate-50">
+                          <td className="py-3 px-3 font-bold">
+                            <a
+                              href={est.qboUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-slate-900 hover:text-blue-600 inline-flex items-center gap-1"
+                              title="Open in QuickBooks"
+                            >
+                              #{est.docNumber}
+                              <ExternalLink className="w-3 h-3 text-slate-400" />
+                            </a>
+                          </td>
+                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap">{est.txnDate || "N/A"}</td>
+                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap">{est.expirationDate || "—"}</td>
+                          <td className="py-3 px-3 text-slate-600 max-w-xs">{est.summary || "—"}</td>
+                          <td className="py-3 px-3 text-slate-900 font-semibold">
+                            ${est.totalAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-3">
+                            <EstimateStatusBadge status={est.status} expirationDate={est.expirationDate} />
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>

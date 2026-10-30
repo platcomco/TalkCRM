@@ -9,6 +9,10 @@ import { CustomerTags } from "@/components/CustomerTags";
 import { usePathname } from "next/navigation";
 import { isPublicPage } from "@/lib/public-pages";
 import { formatLine } from "@/lib/phone-utils";
+import { EstimateStatusBadge } from "@/components/EstimateStatusBadge";
+import { qboEstimateUrl } from "@/lib/qbo-links";
+
+const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function CallScreenPop() {
   const [activeCall, setActiveCall] = useState<CallPayload | null>(null);
@@ -252,6 +256,43 @@ export function CallScreenPop() {
                     </span>
                   </div>
                 </div>
+
+                {/* Open QuickBooks estimates: often what they're calling about */}
+                {!!customer.openEstimates?.length && (
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                    <span className="text-[10px] text-slate-500 font-medium block">
+                      Open Estimates ({customer.openEstimatesCount || customer.openEstimates.length})
+                    </span>
+                    {customer.openEstimates.map((est) => (
+                      <a
+                        key={est.qboEstimateId}
+                        href={qboEstimateUrl(est.qboEstimateId)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block bg-slate-50 hover:bg-blue-50 p-2 rounded-lg transition"
+                      >
+                        <span className="flex items-center justify-between gap-2 text-xs">
+                          <span className="font-semibold text-slate-800">
+                            #{est.docNumber} · {money(est.totalAmount)}
+                          </span>
+                          <EstimateStatusBadge status={est.status} expirationDate={est.expirationDate} />
+                        </span>
+                        <span className="block text-[11px] text-slate-500 truncate">
+                          {[est.txnDate, est.summary].filter(Boolean).join(" · ")}
+                        </span>
+                      </a>
+                    ))}
+                    {(customer.openEstimatesCount || 0) > customer.openEstimates.length && (
+                      <Link
+                        href={`/customers/${customer.id}?tab=estimates`}
+                        onClick={() => setActiveCall(null)}
+                        className="block text-[11px] text-blue-600 hover:text-blue-800"
+                      >
+                        See all {customer.openEstimatesCount} estimates
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ) : (

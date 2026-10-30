@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatPhoneDisplay, formatDuration } from "@/lib/phone-utils";
-import { PhoneCall, Users, DollarSign, Clock, AlertTriangle, ArrowRight, PhoneIncoming, ShieldCheck, ExternalLink, FileText } from "lucide-react";
+import { PhoneCall, Users, DollarSign, Clock, AlertTriangle, ArrowRight, PhoneIncoming, ShieldCheck, ExternalLink, FileText, ClipboardList } from "lucide-react";
+import { isEstimateExpired } from "@/lib/qbo-links";
 import { LiveRefresh } from "@/components/LiveRefresh";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ const kpiCardClass =
   "bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-blue-300 hover:shadow-md transition";
 
 export default async function DashboardPage() {
-  const [customerCount, callCount, calls, openInvoices, qbo] = await Promise.all([
+  const [customerCount, callCount, calls, openInvoices, qbo, openEstimates] = await Promise.all([
     db.customer.count(),
     db.callLog.count(),
     db.callLog.findMany({
@@ -28,7 +29,10 @@ export default async function DashboardPage() {
       orderBy: [{ status: "desc" }, { dueDate: "asc" }],
     }),
     db.integration.findUnique({ where: { provider: "quickbooks" }, select: { lastSyncedAt: true } }),
+    db.estimateCache.findMany({ select: { totalAmount: true, status: true, expirationDate: true } }),
   ]);
+  const estimateTotal = openEstimates.reduce((acc, est) => acc + est.totalAmount, 0);
+  const expiredEstimates = openEstimates.filter((est) => isEstimateExpired(est.status, est.expirationDate)).length;
   const lastSync = qbo?.lastSyncedAt
     ? qbo.lastSyncedAt.toLocaleString("en-US", {
         timeZone: process.env.TZ || "America/Chicago",
@@ -74,7 +78,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Total Customers */}
         <Link href="/customers" className={kpiCardClass}>
           <div>
@@ -126,6 +130,21 @@ export default async function DashboardPage() {
           </div>
           <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
             <AlertTriangle className="w-6 h-6" />
+          </div>
+        </Link>
+
+        {/* Open Estimates */}
+        <Link href="/estimates" className={kpiCardClass}>
+          <div>
+            <p className="text-xs font-medium text-slate-500">Open Estimates</p>
+            <p className="text-2xl font-bold text-slate-900 mt-1">{openEstimates.length}</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              ${estimateTotal.toLocaleString("en-US", { maximumFractionDigits: 0 })} quoted
+              {expiredEstimates > 0 && <span className="text-rose-600 font-medium"> · {expiredEstimates} expired</span>}
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
+            <ClipboardList className="w-6 h-6" />
           </div>
         </Link>
       </div>

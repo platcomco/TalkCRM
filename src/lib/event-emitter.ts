@@ -16,6 +16,16 @@ type CallPayload = {
     email?: string | null;
     qboBalance?: number | null;
     openInvoicesCount?: number;
+    openEstimates?: {
+      qboEstimateId: string;
+      docNumber: string;
+      totalAmount: number;
+      status: string; // Pending, Accepted
+      txnDate: string | null;
+      expirationDate: string | null;
+      summary: string | null;
+    }[];
+    openEstimatesCount?: number;
     customerType?: string | null;
     accountNumber?: string | null;
     parentName?: string | null;
